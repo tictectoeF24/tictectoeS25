@@ -1,6 +1,5 @@
 require('dotenv').config();
 console.log('Starting server...');
-console.log('Loaded GEMINI_API_KEY:', process.env.GEMINI_API_KEY);
 
 const express = require("express");
 const cors = require("cors");
@@ -29,6 +28,8 @@ app.use(bodyParser.json());
 app.get("/", (req, res) => {
   res.status(200).json({ message: "Server is running!" });
 });
+
+console.log('Registering routes...');
 app.use("/api", userRoutes);
 app.use("/auth", authRoutes);
 app.use("/utilities", utilitiesRoutes);
@@ -36,13 +37,13 @@ app.use("/api/follow", followRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/conversations", conversationRoutes);
 
-
 // Separate ORCID Authentication Route (Without Authentication)
 app.use("/api/profile/auth/orcid/callback", require("./controllers/profileController").handleOrcidCallback);
 
 // Additional API routes
 app.use("/api/profile", profileRoutes);
 app.use("/api/paper", paperRoutes);
+console.log('Routes registered successfully');
 
 
 app.get("/health", (req, res) => {
@@ -60,13 +61,8 @@ app.use((err, req, res, next) => {
 
 // Start the server
 const PORT = process.env.PORT || 3001;
-console.log(`Attempting to start server on port ${PORT}`);
+console.log(`Starting server on port ${PORT}`);
 
-try {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-} catch (error) {
-  console.error('Failed to start server:', error);
-  process.exit(1);
-}
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+});
