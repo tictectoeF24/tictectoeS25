@@ -1,19 +1,22 @@
 require('dotenv').config();
+console.log('Starting server...');
 console.log('Loaded GEMINI_API_KEY:', process.env.GEMINI_API_KEY);
 
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
-require("dotenv").config();
 
+console.log('Loading routes...');
 const authRoutes = require("./routes/authRoutes");
 const profileRoutes = require("./routes/profileRoutes");
 const paperRoutes = require("./routes/paperRoutes");
 const authenticate = require("./middleware/authenticate");
-const utilitiesRoutes = require("./routes/utilitiesRoutes"); const userRoutes = require("./routes/userRoutes");
+const utilitiesRoutes = require("./routes/utilitiesRoutes"); 
+const userRoutes = require("./routes/userRoutes");
 const followRoutes = require("./routes/followRoutes");
 const chatbotRoutes = require("./routes/chatbot");
 const conversationRoutes = require("./routes/conversationRoutes");
+console.log('Routes loaded successfully');
 
 const app = express();
 
@@ -21,6 +24,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(bodyParser.json());
+
+// Test route
+app.get("/", (req, res) => {
+  res.status(200).json({ message: "Server is running!" });
+});
 app.use("/api", userRoutes);
 app.use("/auth", authRoutes);
 app.use("/utilities", utilitiesRoutes);
@@ -52,6 +60,13 @@ app.use((err, req, res, next) => {
 
 // Start the server
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-});
+console.log(`Attempting to start server on port ${PORT}`);
+
+try {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+} catch (error) {
+  console.error('Failed to start server:', error);
+  process.exit(1);
+}
