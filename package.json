@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "dev": "cd tictectoe-backend && npm run dev"
+  },
   "dependencies": {
     "@expo/vector-icons": "^14.0.4",
     "@supabase/supabase-js": "^2.52.1",
