@@ -1,6 +1,8 @@
 {
   "scripts": {
-    "dev": "cd tictectoe-backend && npm run dev"
+    "dev": "cd tictectoe-backend && npm install && npm run dev",
+    "frontend": "cd tictectoe-frontend && npm install && npx expo start",
+    "dev:all": "concurrently \"npm run dev\" \"npm run frontend\""
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.4",
@@ -8,5 +10,8 @@
     "express": "^4.21.2",
     "react-native-url-polyfill": "^2.0.0",
     "@google/genai": "^1.9.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }
