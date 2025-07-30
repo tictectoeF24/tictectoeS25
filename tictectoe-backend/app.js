@@ -52,7 +52,6 @@ app.use((err, req, res, next) => {
 
 // Start the server
 const PORT = process.env.PORT || 3001;
-const IP = "xxx.xxx.xxx.xxx";
-app.listen(PORT, () => {
-  console.log(`Server running on http://${IP}:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
 });
