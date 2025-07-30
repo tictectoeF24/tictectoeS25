@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research Paper Summarization</title>
+    <script>
+        function summarizeAll() {
+            fetch('/summarize_all')
+                .then(response => response.json())
+                .then(data => {
+                    alert("Summarization Complete!");
+                    console.log(data);
+                })
+                .catch(error => console.error("Error:", error));
+        }
+
+        function summarizeSingle() {
+            const paperId = document.getElementById("paper_id").value;
+            if (!paperId) {
+                alert("Please enter a paper ID");
+                return;
+            }
+
+            fetch('/summarize_single', {
+                method: "POST",
+                body: new URLSearchParams({ "paper_id": paperId }),
+                headers: { "Content-Type": "application/x-www-form-urlencoded" }
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert("Summarization Complete!");
+                console.log(data);
+            })
+            .catch(error => console.error("Error:", error));
+        }
+    </script>
+</head>
+<body>
+    <h1>Research Paper Summarization</h1>
+    
+    <button onclick="summarizeAll()">Summarize All Papers</button>
+
+    <h3>Summarize a Specific Paper</h3>
+    <input type="text" id="paper_id" placeholder="Enter Paper ID">
+    <button onclick="summarizeSingle()">Summarize Paper</button>
+</body>
+</html>

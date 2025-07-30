@@ -1,0 +1,41 @@
+image: alpine:latest
+
+stages:
+  - deploy
+
+deploy_to_github:
+  stage: deploy
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - apk add --no-cache git
+    - git config --global user.email "tictectoeF24@gmail.com"
+    - git config --global user.name "tictectoeF24"
+    - git remote remove github || true
+    - git remote add github https://tictectoeF24:${GITHUB_TOKEN}@github.com/tictectoeF24/tictectoeS25.git
+    - git config --global http.postBuffer 1572864000
+    - echo "Git remotes:"
+    - git remote -v
+    - git fetch origin Develop  
+    - git checkout Develop  
+    - git reset --hard origin/Develop
+    - echo "Current commit:"
+    - git log -1 --oneline
+
+    - echo "Current branch:"
+    - git branch
+
+    - echo "Git status:"
+    - git status
+
+    - echo "Git remotes:"
+    - git remote -v
+    - |
+      for i in 1 2 3; do
+
+        git push --force github Develop:refs/heads/main && break
+        echo "Retrying push to GitHub..."
+        sleep 5
+      done
+  only:
+    - Develop
