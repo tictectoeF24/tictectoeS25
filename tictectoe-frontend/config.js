@@ -1,1 +1,0 @@
-export const BASE_URL_IN_CONFIG = "http://192.168.4.37:3001";
