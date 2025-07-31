@@ -1,7 +1,7 @@
 {
   "scripts": {
   "frontend": "cd tictectoe-frontend && npm install && npx expo start",
-  "dev": "cd tictectoe-backend && npm install && nodemon app.js",
+  "dev": "cd tictectoe-backend && npm install && node app.js",
   "start": "cd tictectoe-backend && npm install && node app.js",
   "test-server": "cd tictectoe-backend && node test-server.js",
   "dev:all": "concurrently \"npm run dev\" \"npm run frontend\""
