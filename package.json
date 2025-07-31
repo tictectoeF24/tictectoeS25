@@ -1,11 +1,11 @@
 {
   "scripts": {
-    "frontend": "cd tictectoe-frontend && npm install && npx expo start",
-    "dev": "cd tictectoe-backend && npm install && npm run dev",
-    "start": "cd tictectoe-backend && npm install && npm start",
-    "test-server": "cd tictectoe-backend && node test-server.js",
-    "dev:all": "concurrently \"npm run dev\" \"npm run frontend\""
-  },
+  "frontend": "cd tictectoe-frontend && npm install && npx expo start",
+  "dev": "cd tictectoe-backend && npm install && nodemon app.js",
+  "start": "cd tictectoe-backend && npm install && node app.js",
+  "test-server": "cd tictectoe-backend && node test-server.js",
+  "dev:all": "concurrently \"npm run dev\" \"npm run frontend\""
+},
   "dependencies": {
     "@expo/vector-icons": "^14.0.4",
     "@supabase/supabase-js": "^2.52.1",
