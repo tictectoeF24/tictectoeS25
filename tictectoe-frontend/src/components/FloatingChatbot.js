@@ -6,6 +6,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL_IN_CONFIG } from "../../config";
 import { getCurrentUserInfo } from "./functions/userUtils";
 
+// Debug: Log the backend URL to verify config is loaded
+console.log("FloatingChatbot - Backend URL:", BASE_URL_IN_CONFIG);
+
 const FloatingChatbot = ({ context, pdfUrl, paperId, paperTitle, paperDoi, visible, onClose, isEmbedded = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
