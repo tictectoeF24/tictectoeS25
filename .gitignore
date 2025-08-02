@@ -1,0 +1,8 @@
+.DS_Store
+*/.DS_Store
+*/node_modules/
+*/.env
+.env
+tictectoe-backend/.env
+tictectoe-frontend/ios/
+node_modules/
