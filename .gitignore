@@ -3,6 +3,5 @@
 */node_modules/
 */.env
 .env
-tictectoe-backend/.env
 tictectoe-frontend/ios/
 node_modules/
