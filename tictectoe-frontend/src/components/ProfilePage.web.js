@@ -176,6 +176,27 @@ export function ProfilePage() {
         styles.navDivider, 
         { backgroundColor: isDarkMode ? '#285F3B' : '#3D8C45', opacity: 0.5 }
       ]} />
+      <TouchableOpacity 
+        style={[
+          styles.navItem, 
+          { 
+            backgroundColor: isDarkMode ? '#2A2A2A' : 'white',
+            borderWidth: 1,
+            borderColor: isDarkMode ? '#444' : '#e0e0e0'
+          }
+        ]} 
+        onPress={() => navigation.navigate("RecommendedPapersScreen")}
+      >
+        <FontAwesome name="fire" size={24} color={isDarkMode ? '#7CC288' : '#064E41'} />
+        <Text style={[
+          styles.navItemText,  
+          { color: isDarkMode ? '#7CC288' : '#064E41' }
+        ]}>Recommended</Text>
+      </TouchableOpacity>
+      <View style={[
+        styles.navDivider, 
+        { backgroundColor: isDarkMode ? '#285F3B' : '#3D8C45', opacity: 0.5 }
+      ]} />
 
       {/* new button for search user page  */}
       <TouchableOpacity 
@@ -649,8 +670,14 @@ export function ProfilePage() {
         >
           <Ionicons name="arrow-back" size={24} color="#064E41" />
         </TouchableOpacity>
-        <Image style={styles.logoStyle} source={require("../../assets/Logo-Transparent.png")} />
-        <Text style={styles.titleText}>Tic Tec Toe</Text>
+        <TouchableOpacity
+          onPress={() => navigation.navigate("Explore")}
+          activeOpacity={1} // don't change appearance on click
+          style={{ flexDirection: 'row', alignItems: 'center' }}
+        >
+          <Image style={styles.logoStyle} source={require("../../assets/Logo-Transparent.png")} />
+          <Text style={styles.titleText}>Tic Tec Toe</Text>
+        </TouchableOpacity>
       </LinearGradient>
 
       {/* Main Layout (Left Navigation + Right Content) */}
@@ -889,7 +916,7 @@ export function ProfilePage() {
                     styles.emptyStateText,
                     { color: isDarkMode ? '#BBB' : '#555' }
                   ]}>
-                    You're not following anyone yet.
+                    {"You're not following anyone yet."}
                   </Text>
                 </View>
               )}

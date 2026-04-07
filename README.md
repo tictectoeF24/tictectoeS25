@@ -14,18 +14,29 @@ Installation instructions available [here](https://dalu.sharepoint.com/:b:/r/tea
 
 ## Team Links
 
-- [Teams](https://teams.microsoft.com/l/team/19%3Abh6SYdmkXXnYAuRbihLQABobzPJgf3akTjDBM-zkerc1%40thread.tacv2/conversations?groupId=b78d9e3c-1023-41a3-9d97-64e0b30e5c95&tenantId=60b81999-0b7f-412d-92a3-e17d8ae9e3e0)
-- [Jira](https://jira.cs.dal.ca/secure/RapidBoard.jspa?rapidView=62&projectKey=TTT#)
-- [Confluence](https://confluence.cs.dal.ca/spaces/viewspace.action?key=TTT)
+- [Microsoft Teams](https://teams.microsoft.com/l/channel/19%3A0b58ec520c444adaa028007ab2f71fe2%40thread.tacv2/TicTecToe%20-%20Usmi?groupId=a4f35439-36c6-463b-ac7b-60f7ca6d3aab&tenantId=60b81999-0b7f-412d-92a3-e17d8ae9e3e0) - Primary communication platform
+- [GitLab](https://git.cs.dal.ca/courses/csci-x691/tictectoe) - Task/ticket management, code repository, and CI/CD
 - [RFP](https://dal.brightspace.com/d2l/le/content/344719/viewContent/4452038/View)
-- [Gitlab](https://git.cs.dal.ca/courses/csci-x691/tictectoe)
-- [x691 Brightspace Fall 24](https://dal.brightspace.com/d2l/home/344719)
-- [x691 Teams Channel](https://teams.microsoft.com/l/channel/19%3AYawIhLqDKyYuxhPwFNYgS4IUbkwb2ejFMqKKczevvEA1%40thread.tacv2/General?groupId=e71c0272-3d75-4877-9c6b-ad757d8f2870)
+- [x691 Teams Channel](https://teams.microsoft.com/l/channel/19%3A0b58ec520c444adaa028007ab2f71fe2%40thread.tacv2/TicTecToe%20-%20Usmi?groupId=a4f35439-36c6-463b-ac7b-60f7ca6d3aab&tenantId=60b81999-0b7f-412d-92a3-e17d8ae9e3e0)
+
+## Task and Project Management
+
+All task management, issue tracking, and project coordination is handled through **GitLab Issues** and **Microsoft Teams**. 
+- Create tasks and track issues using GitLab Issues
+- Use GitLab Merge Requests for code reviews and integration
+- Coordinate and communicate via Microsoft Teams
+
+## Task and Project Management
+
+All task management, issue tracking, and project coordination is handled through **GitLab Issues** and **Microsoft Teams**. 
+- Create tasks and track issues using GitLab Issues
+- Use GitLab Merge Requests for code reviews and integration
+- Coordinate and communicate via Microsoft Teams
 
 ## Branch Creation
 
 1. For consistent branch naming, use the format: <functionality>-<lastname>. For example, if you're creating a branch to work on a login button feature and your last name is Nykl, the branch name would be: login-button-nykl
-2. All developers should create pull requests (PRs) to merge changes into the development branch. At the end of each major sprint, senior developers will merge development into main.
+2. All developers should create merge requests (MRs) in GitLab to merge changes into the development branch. At the end of each major sprint, senior developers will merge development into main.
 
 ### main
 
@@ -43,32 +54,113 @@ Installation instructions available [here](https://dalu.sharepoint.com/:b:/r/tea
 
 this is where all of our frontend pages for both mobile and webpage will be held.
 
-- webpage-frontend directory - this is for all desktop pages. Pages here should end with -webpage suffix. EG. the authentication page would be named authentication-webpage
-- mobile-frontend directory - this is for all mobile pages. Pages here should end with -mobile suffix. EG. the authentication page would be named authentication-mobile
-- CSS directory - this folder will hold all of our styling pages
-- img directory - this will hold all images used in development
+tictectoe-frontend\updateIp.js
+- Dynamically updates the base URL to use the local IP address
+
+tictectoe-frontend\config.js
+- Defines a constant with the base URL
+
+tictectoe-frontend\api.js
+- Defines async functions for making API requests
+
+tictectoe-frontend\App.js
+- Defines mobile navigation using Stack Navigator
+
+tictectoe-frontend\App.web.js
+- Defines desktop navigation
+- Sets up unique routes for each paper
+
+tictectoe-frontend\src\components
+- All pages are found here
+- Desktop pages end with .web.js
+- Mobile pages end just with .js
+
+tictectoe-frontend\src\components\small-components
+- Smaller components are found here
+
+tictectoe-frontend\src\components\functions
+- Contains utility function definitions
+- Functions can be imported on other frontend files as needed 
+
+tictectoe-frontend\src\contexts
+- All context files are found here
+- Desktop context end with .web.js
+- Mobile context end just with .js
+
+tictectoe-frontend\src\styles
+- All styles are created with the React Native StyleSheet API
+- Desktop Styles end with .web.js
+- Mobile Styles end just with .js
+
+tictectoe-frontend\assets
+- Assests such as images are to be included here
 
 ### tictectoe-backend
 
-this is where all of our backend development will take place, further breakdown of structure to come.
+this is where all of our backend development will take place.
+
+#### tictectoe-backend\app.js
+- Initializes middleware, mounts route modules, and exposes health + PDF proxy endpoints.
+
+#### tictectoe-backend\controllers
+- `authController.js`: Handles signup, login, OTP, password reset, and email validation.
+- `paperController.js`: Manages paper ingestion, recommendations, social interactions, audio pipeline, newsletter, and transcript APIs.
+- `profileController.js`: Handles profile updates, interests, ORCID linking, and authorship claims.
+- `conversationController.js`: Provides chat persistence APIs.
+- `noteController.js`: Manages note persistence APIs.
+- `followController.js`: Handles follow graph APIs.
+- `searchController.js`: Implements user search functionality.
+- `utilitiesController.js`: Provides utilities like PDF text extraction and category management.
+
+#### tictectoe-backend\routes
+- Defines REST API endpoints grouped by domain.
+
+#### tictectoe-backend\middleware
+- `authenticate.js`: Validates Bearer JWT tokens and enriches `req.user`.
+
+#### tictectoe-backend\scripts
+- Utility scripts for data preprocessing and operations.
+- `generateProcessedJson.js`: Generates processed section JSON for a given DOI.
+- `ensureLatexContentForPaper.js`: Ensures `latex_content` exists for a given DOI.
+
+#### tictectoe-backend\tests
+- Includes unit and integration tests for controllers, middleware, and routes.
+
+#### tictectoe-backend\sql
+- Contains schema helper SQL for chat persistence models.
+
+#### tictectoe-backend\python-scripts
+- Local Python utilities for tasks like TTS generation.
+
+#### tictectoe-backend\ffmpeg
+- Bundled ffmpeg binary used for audio segmentation.
+
+## Additional Documentation
+
+For detailed information about the project architecture, API documentation, deployment procedures, and comprehensive development guidelines, please refer to the closing documentation and project documentation available in the GitLab repository and Microsoft Teams shared documents.
 
 ## Authors and acknowledgment
 
-### Fall 2024 Team:
+### Winter 2026 Team:
 
-Madeleine Nykl, md452401@dal.ca, Development Director
-Pratham Jain, pr245998@dal.ca, Technical Director
-Abhinav Chintalapudi, bl442252@dal.ca, Senior Developer
-Ishant Jethi, is649926@dal.ca, Senior Developer
-Huy Huynh, hy676099@dal.ca, Junior Developer
-Jenil Savaliya, jn569163@dal.ca, Junior Developer
-Sahil Tanna, sh711153@dal.ca, Junior Developer
-Shruti Chaturvedi, sh652956@dal.ca, Junior Developer
-Daniel Flemming, dn426420@dal.ca, Junior Developer
+**Development Director:**
+- Sahil Tanna (sahil@dal.ca)
 
-### Winter 2025 Team:
+**Technical Director:**
+- Camilo Sanchez Porras (camilo.sanchez@dal.ca)
+- Abdulsamad Hussain (a.hussain@dal.ca)
 
-<add team names here>
+**Senior Developers:**
+- Faisal Abujamous (fs807825@dal.ca)
+- Cole LeBlanc (cl797917@dal.ca)
+
+**Junior Developers:**
+- Ranem Al-Masalmeh (rn675467@dal.ca)
+- Minh Son Truong (mn581343@dal.ca)
+- Sahil Chowdary Ganta(sh814514@dal.ca)
+- Darshil Nedunuri (dr671676@dal.ca)
+
+
 
 ## Helpful Gitlab resources
 

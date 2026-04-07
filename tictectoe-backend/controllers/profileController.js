@@ -2,7 +2,6 @@ const supabase = require('@supabase/supabase-js').createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-const jwt = require('jsonwebtoken');
 const { generateEmbeddingForUserInterest } = require('./paperController');
 require('dotenv').config();
 

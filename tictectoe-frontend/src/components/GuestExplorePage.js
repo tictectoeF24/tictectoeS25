@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-
 import {
     View,
     TextInput,
     FlatList,
     TouchableOpacity,
     Text,
-    Switch,
-    Share,
-    Alert,
-    Linking,
     Modal,
     Dimensions,
 } from "react-native";
@@ -18,38 +13,18 @@ import { lightStyles, darkStyles } from "../styles/ExplorePageStyles";
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { fetchPapersByClickCount, searchPapers } from "../../api";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { PaperListItem } from "./small-components/PaperListItem";
-import { fetchProfile } from '../../api';
-import { BASE_URL } from "../../api";
-import DateTimePicker from "@react-native-community/datetimepicker";
 
 const GuestExplorePage = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
-    const [activeComments, setActiveComments] = useState(null);
-    const [commentsData, setCommentsData] = useState({});
-    const [newComment, setNewComment] = useState("");
     const [papers, setPapers] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [liked, setLiked] = useState(false);
-    const [bookmarked, setBookmarked] = useState(false);
     const [error, setError] = useState(null);
     const navigation = useNavigation();
     const styles = isDarkMode ? darkStyles : lightStyles;
-    const screenHeight = Dimensions.get('window').height;
-    const [hoverExplore, setHoverExplore] = useState(false);
-    const [hoverBookmarks, setHoverBookmarks] = useState(false);
-    const [pressedExplore, setPressedExplore] = useState(false);
-    const [pressedBookmarks, setPressedBookmarks] = useState(false);
-    const [startDate, setStartDate] = useState(null);
-    const [endDate, setEndDate] = useState(null);
-    const [showStartPicker, setShowStartPicker] = useState(false);
-    const [showEndPicker, setShowEndPicker] = useState(false);
-    const [profileData, setProfileData] = useState(null);
-    const [showModal, setShowModal] = useState(false);
+    const screenHeight = Dimensions.get("window").height;
     const [showAuthModal, setShowAuthModal] = useState(false);
-
 
     const searchTimeout = useRef(null);
 
@@ -76,7 +51,6 @@ const GuestExplorePage = () => {
         loadPapersData();
     }, []);
 
-
     const handleSearch = async () => {
         setLoading(true);
         setError(null);
@@ -98,58 +72,6 @@ const GuestExplorePage = () => {
             setError(
                 "Failed to load search results. Please check your network connection."
             );
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const signOut = async () => {
-        try {
-
-            await AsyncStorage.removeItem("jwtToken");
-            await AsyncStorage.removeItem("currentRoute");
-
-            deleteAuthToken();
-            // navigation.navigate("LandingPage");
-            return true;
-        } catch (error) {
-            console.error("Logout error:", error);
-            return false;
-        }
-    };
-
-
-    const handleDateFilter = async () => {
-        setLoading(true);
-        setError(null);
-
-        try {
-            const token = await AsyncStorage.getItem("jwtToken");
-            if (!token) {
-                throw new Error("Session expired. Please log in again.");
-            }
-
-            const formattedStartDate = startDate
-                ? startDate.toLocaleDateString("en-CA")
-                : null;
-            const formattedEndDate = endDate
-                ? endDate.toLocaleDateString("en-CA")
-                : null;
-
-            const data = await searchPapers("", formattedStartDate, formattedEndDate); // Empty searchQuery to filter only by date range
-            if (data.length === 0) {
-                setError("No results found for the selected date range.");
-            } else {
-                setPapers(data);
-            }
-        } catch (err) {
-            console.error("Error filtering by date range:", err);
-            if (err.message.includes("Session expired")) {
-                Alert.alert("Session Expired", "Please log in again.");
-                navigation.navigate("Login");
-            } else {
-                setError("Failed to filter by date range. Please try again.");
-            }
         } finally {
             setLoading(false);
         }
@@ -190,30 +112,6 @@ const GuestExplorePage = () => {
         navigation.navigate("AuthenticationSignUpPage");
     };
 
-    const toggleLike = (paperId) => {
-        setLikedPapers((prevLiked) => ({
-            ...prevLiked,
-            [paperId]: !prevLiked[paperId],
-        }));
-    };
-
-    const toggleBookmark = (paperId) => {
-        setBookmarkedPapers((prevBookmarked) => ({
-            ...prevBookmarked,
-            [paperId]: !prevBookmarked[paperId],
-        }));
-    };
-
-    const handleShare = async (paper) => {
-        try {
-            await Share.share({
-                message: `Check out this research paper: ${paper.title} - ${paper.genre}. ${paper.description}`,
-            });
-        } catch (error) {
-            alert(error.message);
-        }
-    };
-
     return (
         <LinearGradient
             colors={isDarkMode ? ["#0C1C1A", "#2B5A3E"] : ["#064E41", "#57B360"]}
@@ -228,7 +126,7 @@ const GuestExplorePage = () => {
                         marginBottom: 20,
                         marginTop: 20,
                     }}>
-                        <View style={[styles.searchBar, {flex: 1, marginRight: 10 }]}>
+                        <View style={[styles.searchBar, { flex: 1, marginRight: 10 }]}>
                             <FontAwesome
                                 name="search"
                                 size={20}
@@ -250,82 +148,27 @@ const GuestExplorePage = () => {
                             />
                         </View>
 
-
-                        {/* //new code  */}
-                        <TouchableOpacity 
-        onPress={handleAuthRequired} 
-        style={{
-            backgroundColor: 'rgba(255,255,255,0.2)',
-            padding: 8,
-            borderRadius: 8,
-            marginRight: 8,
-        }}
-    >
-        <FontAwesome name="calendar" size={20} color="white" />
-    </TouchableOpacity>
-    {/* //end of new code */}
+                        <TouchableOpacity
+                            onPress={handleAuthRequired}
+                            style={{
+                                backgroundColor: 'rgba(255,255,255,0.2)',
+                                padding: 8,
+                                borderRadius: 8,
+                                marginRight: 8,
+                            }}
+                        >
+                            <FontAwesome name="calendar" size={20} color="white" />
+                        </TouchableOpacity>
 
                         <TouchableOpacity onPress={toggleTheme} style={{ marginLeft: 2 }}>
-                            <MaterialIcons 
-                                name={isDarkMode ? "wb-sunny" : "nightlight-round"} 
-                                size={24} 
-                                color="white" 
+                            <MaterialIcons
+                                name={isDarkMode ? "wb-sunny" : "nightlight-round"}
+                                size={24}
+                                color="white"
                             />
                         </TouchableOpacity>
                     </View>
                 </View>
-
-                {/* <View style={[styles.dateRangeContainer, { marginTop: -5, marginBottom: 15 }]}>
-                    Start Date Picker
-                    <View style={styles.datePickerWrapper}>
-                        <TouchableOpacity onPress={handleAuthRequired} style={styles.smallDatePicker}>
-                            <FontAwesome name="calendar" size={20} color="#fff" />
-                            <Text style={styles.dateText}>
-                                {startDate ? startDate.toDateString() : "Start Date"}
-                            </Text>
-                        </TouchableOpacity>
-                        {showStartPicker && (
-                            <DateTimePicker
-                                value={startDate || new Date()}
-                                mode="date"
-                                display="default"
-                                onChange={(event, date) => {
-                                    setShowStartPicker(false);
-                                    if (date) setStartDate(date);
-                                }}
-                            />
-                        )}
-                    </View>
-
-                    End Date Picker
-                    <View style={styles.datePickerWrapper}>
-                        <TouchableOpacity onPress={handleAuthRequired} style={styles.smallDatePicker}>
-                            <FontAwesome name="calendar" size={20} color="#fff" />
-                            <Text style={styles.dateText}>
-                                {endDate ? endDate.toDateString() : "End Date"}
-                            </Text>
-                        </TouchableOpacity>
-                        {showEndPicker && (
-                            <DateTimePicker
-                                value={endDate || new Date()}
-                                mode="date"
-                                display="default"
-                                onChange={(event, date) => {
-                                    setShowEndPicker(false);
-                                    if (date) setEndDate(date);
-                                }}
-                            />
-                        )}
-                    </View>
-
-                    Apply Filter Button
-                    <TouchableOpacity
-                        onPress={handleAuthRequired}
-                        style={styles.applyButton}
-                    >
-                        <Text style={styles.applyButtonText}>Apply</Text>
-                    </TouchableOpacity>
-                </View> */}
 
                 {error ? (
                     <Text style={{ color: "red", textAlign: "center" }}>{error}</Text>
@@ -338,7 +181,7 @@ const GuestExplorePage = () => {
                             <PaperListItem
                                 item={item}
                                 navigation={navigation}
-                                userId={profileData?.id}
+                                userId={undefined}
                                 showAuthModal={handleAuthRequired}
                             />
                         )}
@@ -349,7 +192,7 @@ const GuestExplorePage = () => {
                         showsVerticalScrollIndicator={false}
                         scrollEnabled={true}
                         snapToAlignment="start"
-                        snapToInterval={screenHeight * 0.7 + 220} 
+                        snapToInterval={screenHeight * 0.7 + 220}
                         decelerationRate="fast"
                         pagingEnabled={false}
                         horizontal={false}
@@ -503,7 +346,6 @@ const GuestExplorePage = () => {
             </Modal>
         </LinearGradient>
     );
-}
-
+};
 
 export default GuestExplorePage;

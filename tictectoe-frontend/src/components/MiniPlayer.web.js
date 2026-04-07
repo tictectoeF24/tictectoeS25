@@ -16,6 +16,7 @@ const MiniPlayer = () => {
     audioSegments,
     handleNextSegment,
     handlePreviousSegment,
+    pause,
   } = useAudio();
   
   const navigation = useNavigation();
@@ -117,7 +118,13 @@ const MiniPlayer = () => {
         <View style={styles.controlsContainer}>
           <TouchableOpacity 
             style={[styles.controlButton, styles.segmentButton]} 
-            onPress={handlePreviousSegment}
+            onPress={async () => {
+              if (currentSegmentIndex > 0) {
+                try { await pause(); } catch(e) { console.warn('pause failed in MiniPlayer.web (prev):', e); }
+                try { seekTo(0); } catch(e) { console.warn('seekTo failed in MiniPlayer.web (prev):', e); }
+                handlePreviousSegment(); // Then switch to previous segment
+              }
+            }}
             disabled={currentSegmentIndex === 0}
             data-control="true"
           >
@@ -142,7 +149,13 @@ const MiniPlayer = () => {
 
           <TouchableOpacity 
             style={[styles.controlButton, styles.segmentButton]} 
-            onPress={handleNextSegment}
+            onPress={async () => {
+              if (currentSegmentIndex < audioSegments.length - 1) {
+                try { await pause(); } catch(e) { console.warn('pause failed in MiniPlayer.web (next):', e); }
+                try { seekTo(0); } catch(e) { console.warn('seekTo failed in MiniPlayer.web (next):', e); }
+                handleNextSegment(); // Then switch to next segment
+              }
+            }}
             disabled={currentSegmentIndex >= audioSegments.length - 1}
             data-control="true"
           >

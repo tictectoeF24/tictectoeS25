@@ -16,8 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import tw from "twrnc";
 import { signUp, fetchAvailableInterests } from "../../api";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setAuthToken } from "../../api";
+import { checkEmailAvailability } from "../../api";
 
 const AuthenticationSignUpPage = () => {
   const [fullName, setFullName] = useState("");
@@ -39,6 +38,21 @@ const AuthenticationSignUpPage = () => {
 
   const [availableInterests, setAvailableInterests] = useState({});
   const [selectedInterests, setSelectedInterests] = useState([]);
+
+  const [interestError, setInterestError] = useState("");
+
+// clear the inline error as soon as the user picks enough interests
+useEffect(() => {
+  if (selectedInterests.length >= 2 && interestError) setInterestError("");
+}, [selectedInterests, interestError]);
+
+const canSubmit =
+  !!fullName &&
+  !!userName &&
+  !!email &&
+  !!password &&
+  selectedInterests.length >= 2 &&
+  !emailError;
 
   const navigation = useNavigation();
   const route = useRoute();
@@ -253,52 +267,107 @@ const AuthenticationSignUpPage = () => {
     return "";
   };
 
+  const validateInstitutionEmail = (email) =>
+  /@(?:[a-z0-9.-]+\.)?(dal\.ca|dalhousie\.ca)$/i.test((email || "").trim());
+
+
+const handleEmailBlur = async () => {
+  const value = (email || "").trim().toLowerCase();
+  setEmailError("");
+
+  const fmtErr = validateEmail(value);
+  if (fmtErr) { setEmailError(fmtErr); return false; }
+
+  if (!validateInstitutionEmail(value)) {
+    setEmailError("Please use your institutional email (dal.ca or dalhousie.ca).");
+    return false;
+  }
+
+  try {
+    const res = await checkEmailAvailability(value);
+    if (res.available === true) return true;
+
+    if (res.available === false && res.reason === "unverified") {
+      setEmailError("Account pending verification. We’ll resend your OTP on submit.");
+      return true; // allow submit (signup will resend OTP)
+    }
+
+    // verified/taken
+    setEmailError("Email already in use");
+    return false;
+  } catch (err) {
+    const status = err?.status ?? err?.response?.status;
+    if (status === 409) { setEmailError("Email already in use"); return false; }
+    setEmailError("Could not validate email. Try again.");
+    return false;
+  }
+};
+
   const handleSubmit = async () => {
-    const emailValidationError = validateEmail(email);
-    setEmailError(emailValidationError);
+  // Re-validate email availability right before submit
+  const ok = await handleEmailBlur();
+  if (!ok) return;
 
-    const passwordValidationError = validatePassword(password);
-    if (passwordValidationError) {
-      Alert.alert("Error", passwordValidationError);
-      return;
-    }
+  const emailValidationError = validateEmail(email);
+  setEmailError(emailValidationError);
+  if (emailValidationError) return;
 
-    if (!fullName) {
-      Alert.alert("Error", "Please Enter your Full Name");
-      return;
-    }
-    if (!userName) {
-      Alert.alert("Error", "Please enter your username");
-      return;
-    }
-    if (!email) {
-      Alert.alert("Error", "Please enter your email address");
-      return;
-    }
-    if (!password) {
-      Alert.alert("Error", "Please enter your password");
-      return;
-    }
+  if (!validateInstitutionEmail(email)) {
+    Alert.alert("Error", "Please use your institutional email (dal.ca or dalhousie.ca).");
+    return;
+  }
 
-    const lowerCaseEmail = email.toLowerCase();
+  const passwordValidationError = validatePassword(password);
+  if (passwordValidationError) {
+    Alert.alert("Error", passwordValidationError);
+    return;
+  }
 
+  if (!fullName) return Alert.alert("Error", "Please enter your full name");
+  if (!userName) return Alert.alert("Error", "Please enter your username");
+  if (!email) return Alert.alert("Error", "Please enter your email address");
+  if (!password) return Alert.alert("Error", "Please enter your password");
+
+  // inside handleSubmit, keep the guard but set inline error instead of relying on Alert
+  if (!Array.isArray(selectedInterests) || selectedInterests.length < 2) {
+    setInterestError("Pick at least 2 interests.");
+    // Optionally scroll into view if you want
+    return;
+  }
+
+  const lowerCaseEmail = email.toLowerCase();
+
+  try {
     const response = await signUp({
       email: lowerCaseEmail,
       password,
       fullName,
       userName,
       userInterest: selectedInterests,
+      subscribeNewsletter, // ✅ include this
     });
 
     if (response?.status === 200) {
-      const { token } = response.data;
-      console.log("OTP sent");
       navigation.navigate("AuthenticationVerifyPage", { email: lowerCaseEmail });
-      Alert.alert("Success", "Account created, OTP sent to your email!");
+      Alert.alert("Success", "Account created. OTP sent to your email.");
     } else {
-      console.log("Signup failed", response);
+      Alert.alert("Signup failed", "Unexpected response from server.");
     }
-  };
+  } catch (err) {
+    const status = err?.response?.status;
+    const msg =
+      err?.response?.data?.error ||
+      err?.message ||
+      "Failed to create account.";
+    if (status === 409) {
+      Alert.alert("Email in use", "That email is already registered.");
+    } else if (status === 400) {
+      Alert.alert("Invalid input", msg);
+    } else {
+      Alert.alert("Error", msg);
+    }
+  }
+};
 
   const textColor = switchEnabled ? "text-black" : "text-white";
   const inputBgColor = switchEnabled ? "bg-gray-900" : "bg-white";
@@ -495,6 +564,7 @@ const AuthenticationSignUpPage = () => {
                     setEmail(value);
                     setEmailError("");
                   }}
+                  onBlur={handleEmailBlur}
                   value={email}
                   keyboardType="email-address"
                   placeholder="Enter your institution email"
@@ -711,8 +781,11 @@ const AuthenticationSignUpPage = () => {
                   ))}
                 </View>
               )}
+              {interestError ? (
+                <Text style={tw`text-red-300 mt-2 ml-1`}>{interestError}</Text>
+              ) : null}
             </View>
-
+            
             {/* Newsletter Subscription */}
             <View style={[
               tw`flex-row items-center bg-white/5 rounded-xl`,

@@ -19,94 +19,97 @@ import { fetchProfile } from "../../api";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { FontAwesome, MaterialIcons, Entypo } from "@expo/vector-icons";
 import { Share } from "react-native";
-import { WebView } from "react-native-webview"; // Correct WebView import
-import RenderHTML from 'react-native-render-html';
-import { likePaper, commentPaper, bookmarkPaper, checkIfAlreadyLiked, checkIfAlreadyBookmarked, getPaperComments, unlikePaper, unbookmarkPaper } from "./functions/PaperFunc";
-import tw from 'twrnc';
-import MobileChatbot from './MobileChatbot';
-
-import { signOut } from "../../api";
+import { WebView } from "react-native-webview";
+import RenderHTML from "react-native-render-html";
+import {
+  likePaper,
+  commentPaper,
+  bookmarkPaper,
+  checkIfAlreadyLiked,
+  checkIfAlreadyBookmarked,
+  getPaperComments,
+  unlikePaper,
+  unbookmarkPaper,
+} from "./functions/PaperFunc";
+import tw from "twrnc";
+import MobileChatbot from "./MobileChatbot";
 
 // Function to clean LaTeX formatting and make it readable
 const cleanLatexText = (text) => {
   if (!text) return text;
-  
+
   try {
     let cleanedText = text;
-    
-    // Remove inline math delimiters like $...$ and \(...\) 
-    cleanedText = cleanedText.replace(/\$([^$]*)\$/g, '$1');
-    cleanedText = cleanedText.replace(/\\[(](.*?)\\[)]/g, '$1');
-    
+
+    // Remove inline math delimiters like $...$ and \(...\)
+    cleanedText = cleanedText.replace(/\$([^$]*)\$/g, "$1");
+    cleanedText = cleanedText.replace(/\\[(](.*?)\\[)]/g, "$1");
+
     // Remove display math delimiters like $$...$$ and \[...\]
-    cleanedText = cleanedText.replace(/\$\$([^$]*)\$\$/g, '$1');
-    cleanedText = cleanedText.replace(/\\[(.*?)\\]/g, '$1');
-    
+    cleanedText = cleanedText.replace(/\$\$([^$]*)\$\$/g, "$1");
+    cleanedText = cleanedText.replace(/\\[(.*?)\\]/g, "$1");
+
     // Convert fractions to readable format
-    cleanedText = cleanedText.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1)/($2)');
-    
+    cleanedText = cleanedText.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1)/($2)");
+
     // Convert square roots
-    cleanedText = cleanedText.replace(/\\sqrt\{([^}]+)\}/g, '√($1)');
-    cleanedText = cleanedText.replace(/\\sqrt\[([^\]]+)\]\{([^}]+)\}/g, '($2)^(1/$1)');
-    
+    cleanedText = cleanedText.replace(/\\sqrt\{([^}]+)\}/g, "√($1)");
+    cleanedText = cleanedText.replace(/\\sqrt\[([^\]]+)\]\{([^}]+)\}/g, "($2)^(1/$1)");
+
     // Convert common LaTeX commands to readable text
-    cleanedText = cleanedText.replace(/\\textbf\{([^}]+)\}/g, '$1');
-    cleanedText = cleanedText.replace(/\\textit\{([^}]+)\}/g, '$1');
-    cleanedText = cleanedText.replace(/\\emph\{([^}]+)\}/g, '$1');
-    cleanedText = cleanedText.replace(/\\text\{([^}]+)\}/g, '$1');
-    cleanedText = cleanedText.replace(/\\mathrm\{([^}]+)\}/g, '$1');
-    cleanedText = cleanedText.replace(/\\mathbf\{([^}]+)\}/g, '$1');
-    cleanedText = cleanedText.replace(/\\mathit\{([^}]+)\}/g, '$1');
-    cleanedText = cleanedText.replace(/\\mathbb\{([^}]+)\}/g, '$1');
-    cleanedText = cleanedText.replace(/\\mathcal\{([^}]+)\}/g, '$1');
-    cleanedText = cleanedText.replace(/\\mathfrak\{([^}]+)\}/g, '$1');
-    cleanedText = cleanedText.replace(/\\operatorname\{([^}]+)\}/g, '$1');
-    
+    cleanedText = cleanedText.replace(/\\textbf\{([^}]+)\}/g, "$1");
+    cleanedText = cleanedText.replace(/\\textit\{([^}]+)\}/g, "$1");
+    cleanedText = cleanedText.replace(/\\emph\{([^}]+)\}/g, "$1");
+    cleanedText = cleanedText.replace(/\\text\{([^}]+)\}/g, "$1");
+    cleanedText = cleanedText.replace(/\\mathrm\{([^}]+)\}/g, "$1");
+    cleanedText = cleanedText.replace(/\\mathbf\{([^}]+)\}/g, "$1");
+    cleanedText = cleanedText.replace(/\\mathit\{([^}]+)\}/g, "$1");
+    cleanedText = cleanedText.replace(/\\mathbb\{([^}]+)\}/g, "$1");
+    cleanedText = cleanedText.replace(/\\mathcal\{([^}]+)\}/g, "$1");
+    cleanedText = cleanedText.replace(/\\mathfrak\{([^}]+)\}/g, "$1");
+    cleanedText = cleanedText.replace(/\\operatorname\{([^}]+)\}/g, "$1");
+
     // Convert superscripts and subscripts with proper Unicode
     cleanedText = cleanedText.replace(/\^{([^}]+)}/g, (match, content) => {
       try {
-        // Handle complex superscripts
         if (content.length === 1 && /\d/.test(content)) {
-          const superscripts = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+          const superscripts = "⁰¹²³⁴⁵⁶⁷⁸⁹";
           return superscripts[parseInt(content)];
         }
-        return '^(' + content + ')';
+        return "^(" + content + ")";
       } catch (e) {
-        return match; // Return original if conversion fails
+        return match;
       }
     });
-    
+
     cleanedText = cleanedText.replace(/\^([a-zA-Z0-9])/g, (match, char) => {
       try {
         if (/\d/.test(char)) {
-          const superscripts = '⁰¹²³⁴⁵⁶⁷⁸⁹';
-          return superscripts[parseInt(char)] || '^' + char;
+          const superscripts = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+          return superscripts[parseInt(char)] || "^" + char;
         }
-        return '^' + char;
+        return "^" + char;
       } catch (e) {
         return match;
       }
     });
-    
-    // Handle subscripts more carefully
+
     cleanedText = cleanedText.replace(/_{([^}]+)}/g, (match, content) => {
       try {
-        // Handle complex subscripts
         if (content.length === 1 && /\d/.test(content)) {
-          const subscripts = '₀₁₂₃₄₅₆₇₈₉';
+          const subscripts = "₀₁₂₃₄₅₆₇₈₉";
           return subscripts[parseInt(content)];
         }
-        // For complex subscripts, just return without underscore
-        return content; 
+        return content;
       } catch (e) {
         return match;
       }
     });
-    
+
     cleanedText = cleanedText.replace(/_([a-zA-Z0-9])/g, (match, char) => {
       try {
         if (/\d/.test(char)) {
-          const subscripts = '₀₁₂₃₄₅₆₇₈₉';
+          const subscripts = "₀₁₂₃₄₅₆₇₈₉";
           return subscripts[parseInt(char)] || char;
         }
         return char;
@@ -114,172 +117,176 @@ const cleanLatexText = (text) => {
         return match;
       }
     });
-  
-    
+
     // Convert Greek letters
     const greekLetters = {
-      '\\alpha': 'α', '\\Alpha': 'Α',
-      '\\beta': 'β', '\\Beta': 'Β',
-      '\\gamma': 'γ', '\\Gamma': 'Γ',
-      '\\delta': 'δ', '\\Delta': 'Δ',
-      '\\epsilon': 'ε', '\\Epsilon': 'Ε',
-      '\\varepsilon': 'ε',
-      '\\zeta': 'ζ', '\\Zeta': 'Ζ',
-      '\\eta': 'η', '\\Eta': 'Η',
-      '\\theta': 'θ', '\\Theta': 'Θ',
-      '\\vartheta': 'ϑ',
-      '\\iota': 'ι', '\\Iota': 'Ι',
-      '\\kappa': 'κ', '\\Kappa': 'Κ',
-      '\\lambda': 'λ', '\\Lambda': 'Λ',
-      '\\mu': 'μ', '\\Mu': 'Μ',
-      '\\nu': 'ν', '\\Nu': 'Ν',
-      '\\xi': 'ξ', '\\Xi': 'Ξ',
-      '\\omicron': 'ο', '\\Omicron': 'Ο',
-      '\\pi': 'π', '\\Pi': 'Π',
-      '\\varpi': 'ϖ',
-      '\\rho': 'ρ', '\\Rho': 'Ρ',
-      '\\varrho': 'ϱ',
-      '\\sigma': 'σ', '\\Sigma': 'Σ',
-      '\\varsigma': 'ς',
-      '\\tau': 'τ', '\\Tau': 'Τ',
-      '\\upsilon': 'υ', '\\Upsilon': 'Υ',
-      '\\phi': 'φ', '\\Phi': 'Φ',
-      '\\varphi': 'ϕ',
-      '\\chi': 'χ', '\\Chi': 'Χ',
-      '\\psi': 'ψ', '\\Psi': 'Ψ',
-      '\\omega': 'ω', '\\Omega': 'Ω'
+      "\\alpha": "α", "\\Alpha": "Α",
+      "\\beta": "β", "\\Beta": "Β",
+      "\\gamma": "γ", "\\Gamma": "Γ",
+      "\\delta": "δ", "\\Delta": "Δ",
+      "\\epsilon": "ε", "\\Epsilon": "Ε",
+      "\\varepsilon": "ε",
+      "\\zeta": "ζ", "\\Zeta": "Ζ",
+      "\\eta": "η", "\\Eta": "Η",
+      "\\theta": "θ", "\\Theta": "Θ",
+      "\\vartheta": "ϑ",
+      "\\iota": "ι", "\\Iota": "Ι",
+      "\\kappa": "κ", "\\Kappa": "Κ",
+      "\\lambda": "λ", "\\Lambda": "Λ",
+      "\\mu": "μ", "\\Mu": "Μ",
+      "\\nu": "ν", "\\Nu": "Ν",
+      "\\xi": "ξ", "\\Xi": "Ξ",
+      "\\omicron": "ο", "\\Omicron": "Ο",
+      "\\pi": "π", "\\Pi": "Π",
+      "\\varpi": "ϖ",
+      "\\rho": "ρ", "\\Rho": "Ρ",
+      "\\varrho": "ϱ",
+      "\\sigma": "σ", "\\Sigma": "Σ",
+      "\\varsigma": "ς",
+      "\\tau": "τ", "\\Tau": "Τ",
+      "\\upsilon": "υ", "\\Upsilon": "Υ",
+      "\\phi": "φ", "\\Phi": "Φ",
+      "\\varphi": "ϕ",
+      "\\chi": "χ", "\\Chi": "Χ",
+      "\\psi": "ψ", "\\Psi": "Ψ",
+      "\\omega": "ω", "\\Omega": "Ω",
     };
-    
+
     Object.entries(greekLetters).forEach(([latex, unicode]) => {
       try {
-        cleanedText = cleanedText.replace(new RegExp(latex.replace('\\', '\\\\'), 'g'), unicode);
-      } catch (e) {
-        // Skip problematic patterns
-      }
+        cleanedText = cleanedText.replace(
+            new RegExp(latex.replace("\\", "\\\\"), "g"),
+            unicode
+        );
+      } catch (e) {}
     });
-    
+
     // Convert mathematical operators and symbols
     const mathOperators = {
-      '\\leq': '≤', '\\le': '≤',
-      '\\geq': '≥', '\\ge': '≥',
-      '\\neq': '≠', '\\ne': '≠',
-      '\\approx': '≈',
-      '\\sim': '∼',
-      '\\simeq': '≃',
-      '\\equiv': '≡',
-      '\\cong': '≅',
-      '\\propto': '∝',
-      '\\infty': '∞',
-      '\\pm': '±', '\\mp': '∓',
-      '\\times': '×',
-      '\\div': '÷',
-      '\\cdot': '·',
-      '\\bullet': '•',
-      '\\star': '⋆',
-      '\\circ': '∘',
-      '\\bigcirc': '○',
-      '\\oplus': '⊕',
-      '\\ominus': '⊖',
-      '\\otimes': '⊗',
-      '\\oslash': '⊘',
-      '\\odot': '⊙',
-      '\\sum': '∑',
-      '\\prod': '∏',
-      '\\int': '∫',
-      '\\oint': '∮',
-      '\\partial': '∂',
-      '\\nabla': '∇',
-      '\\in': '∈',
-      '\\notin': '∉',
-      '\\ni': '∋',
-      '\\subset': '⊂',
-      '\\supset': '⊃',
-      '\\subseteq': '⊆',
-      '\\supseteq': '⊇',
-      '\\cup': '∪',
-      '\\cap': '∩',
-      '\\setminus': '∖',
-      '\\emptyset': '∅',
-      '\\forall': '∀',
-      '\\exists': '∃',
-      '\\nexists': '∄',
-      '\\land': '∧',
-      '\\lor': '∨',
-      '\\lnot': '¬',
-      '\\rightarrow': '→', '\\to': '→',
-      '\\leftarrow': '←',
-      '\\leftrightarrow': '↔',
-      '\\Rightarrow': '⇒',
-      '\\Leftarrow': '⇐',
-      '\\Leftrightarrow': '⇔',
-      '\\uparrow': '↑',
-      '\\downarrow': '↓',
-      '\\updownarrow': '↕',
-      '\\mapsto': '↦',
-      '\\angle': '∠',
-      '\\perp': '⊥',
-      '\\parallel': '∥',
-      '\\triangle': '△',
-      '\\square': '□',
-      '\\diamond': '◊'
+      "\\leq": "≤", "\\le": "≤",
+      "\\geq": "≥", "\\ge": "≥",
+      "\\neq": "≠", "\\ne": "≠",
+      "\\approx": "≈",
+      "\\sim": "∼",
+      "\\simeq": "≃",
+      "\\equiv": "≡",
+      "\\cong": "≅",
+      "\\propto": "∝",
+      "\\infty": "∞",
+      "\\pm": "±", "\\mp": "∓",
+      "\\times": "×",
+      "\\div": "÷",
+      "\\cdot": "·",
+      "\\bullet": "•",
+      "\\star": "⋆",
+      "\\circ": "∘",
+      "\\bigcirc": "○",
+      "\\oplus": "⊕",
+      "\\ominus": "⊖",
+      "\\otimes": "⊗",
+      "\\oslash": "⊘",
+      "\\odot": "⊙",
+      "\\sum": "∑",
+      "\\prod": "∏",
+      "\\int": "∫",
+      "\\oint": "∮",
+      "\\partial": "∂",
+      "\\nabla": "∇",
+      "\\in": "∈",
+      "\\notin": "∉",
+      "\\ni": "∋",
+      "\\subset": "⊂",
+      "\\supset": "⊃",
+      "\\subseteq": "⊆",
+      "\\supseteq": "⊇",
+      "\\cup": "∪",
+      "\\cap": "∩",
+      "\\setminus": "∖",
+      "\\emptyset": "∅",
+      "\\forall": "∀",
+      "\\exists": "∃",
+      "\\nexists": "∄",
+      "\\land": "∧",
+      "\\lor": "∨",
+      "\\lnot": "¬",
+      "\\rightarrow": "→", "\\to": "→",
+      "\\leftarrow": "←",
+      "\\leftrightarrow": "↔",
+      "\\Rightarrow": "⇒",
+      "\\Leftarrow": "⇐",
+      "\\Leftrightarrow": "⇔",
+      "\\uparrow": "↑",
+      "\\downarrow": "↓",
+      "\\updownarrow": "↕",
+      "\\mapsto": "↦",
+      "\\angle": "∠",
+      "\\perp": "⊥",
+      "\\parallel": "∥",
+      "\\triangle": "△",
+      "\\square": "□",
+      "\\diamond": "◊",
     };
-    
+
     Object.entries(mathOperators).forEach(([latex, unicode]) => {
       try {
-        cleanedText = cleanedText.replace(new RegExp(latex.replace('\\', '\\\\'), 'g'), unicode);
-      } catch (e) {
-      }
+        cleanedText = cleanedText.replace(
+            new RegExp(latex.replace("\\", "\\\\"), "g"),
+            unicode
+        );
+      } catch (e) {}
     });
-    
-    // Handle special cases and formatting 
-    cleanedText = cleanedText.replace(/\\left\s*([(){}[\]|])/g, '$1');
-    cleanedText = cleanedText.replace(/\\right\s*([(){}[\]|])/g, '$1');
-    cleanedText = cleanedText.replace(/\\Big[lr]?\s*([(){}[\]|])/g, '$1');
-    cleanedText = cleanedText.replace(/\\big[lr]?\s*([(){}[\]|])/g, '$1');
-    
+
+    // Handle special cases and formatting
+    cleanedText = cleanedText.replace(/\\left\s*([(){}[\]|])/g, "$1");
+    cleanedText = cleanedText.replace(/\\right\s*([(){}[\]|])/g, "$1");
+    cleanedText = cleanedText.replace(/\\Big[lr]?\s*([(){}[\]|])/g, "$1");
+    cleanedText = cleanedText.replace(/\\big[lr]?\s*([(){}[\]|])/g, "$1");
+
     // Remove LaTeX environments
-    cleanedText = cleanedText.replace(/\\begin\{[^}]+\}/g, '');
-    cleanedText = cleanedText.replace(/\\end\{[^}]+\}/g, '');
-    
+    cleanedText = cleanedText.replace(/\\begin\{[^}]+\}/g, "");
+    cleanedText = cleanedText.replace(/\\end\{[^}]+\}/g, "");
+
     // Remove alignment and spacing commands
-    cleanedText = cleanedText.replace(/\\[hv]space\{[^}]*\}/g, ' ');
-    cleanedText = cleanedText.replace(/\\quad/g, ' ');
-    cleanedText = cleanedText.replace(/\\qquad/g, '  ');
-    cleanedText = cleanedText.replace(/\\,/g, ' ');
-    cleanedText = cleanedText.replace(/\\!/g, '');
-    cleanedText = cleanedText.replace(/\\;/g, ' ');
-    cleanedText = cleanedText.replace(/\\:/g, ' ');
-    
+    cleanedText = cleanedText.replace(/\\[hv]space\{[^}]*\}/g, " ");
+    cleanedText = cleanedText.replace(/\\quad/g, " ");
+    cleanedText = cleanedText.replace(/\\qquad/g, "  ");
+    cleanedText = cleanedText.replace(/\\,/g, " ");
+    cleanedText = cleanedText.replace(/\\!/g, "");
+    cleanedText = cleanedText.replace(/\\;/g, " ");
+    cleanedText = cleanedText.replace(/\\:/g, " ");
+
     const commonLatexCommands = [
-      '\\\\', '\\section', '\\subsection', '\\subsubsection',
-      '\\paragraph', '\\subparagraph', '\\item', '\\label',
-      '\\ref', '\\cite', '\\footnote', '\\margin', '\\newline'
+      "\\\\", "\\section", "\\subsection", "\\subsubsection",
+      "\\paragraph", "\\subparagraph", "\\item", "\\label",
+      "\\ref", "\\cite", "\\footnote", "\\margin", "\\newline",
     ];
-    
-    commonLatexCommands.forEach(cmd => {
+
+    commonLatexCommands.forEach((cmd) => {
       try {
-        cleanedText = cleanedText.replace(new RegExp(cmd.replace('\\', '\\\\') + '\\s*', 'g'), ' ');
-      } catch (e) {
-      }
+        cleanedText = cleanedText.replace(
+            new RegExp(cmd.replace("\\", "\\\\") + "\\s*", "g"),
+            " "
+        );
+      } catch (e) {}
     });
-    
+
     let prevLength = 0;
-    while (cleanedText.length !== prevLength && prevLength < 3) { 
+    while (cleanedText.length !== prevLength && prevLength < 3) {
       prevLength = cleanedText.length;
-      cleanedText = cleanedText.replace(/\{([^{}]*)\}/g, '$1');
+      cleanedText = cleanedText.replace(/\{([^{}]*)\}/g, "$1");
     }
-    
+
     // Basic cleanup
-    cleanedText = cleanedText.replace(/\\_/g, '_');
-    cleanedText = cleanedText.replace(/\\\$/g, '$');
-    cleanedText = cleanedText.replace(/<[^>]*>/g, '');
-    cleanedText = cleanedText.replace(/\{[Hh][Tt][Mm][Ll][Tt][Aa][Gg]_[^}]*\}/g, '');
-    cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
-    
+    cleanedText = cleanedText.replace(/\\_/g, "_");
+    cleanedText = cleanedText.replace(/\\\$/g, "$");
+    cleanedText = cleanedText.replace(/<[^>]*>/g, "");
+    cleanedText = cleanedText.replace(/\{[Hh][Tt][Mm][Ll][Tt][Aa][Gg]_[^}]*\}/g, "");
+    cleanedText = cleanedText.replace(/\s+/g, " ").trim();
+
     return cleanedText;
   } catch (error) {
-    console.warn('LaTeX cleaning error:', error);
-    return text; // Return original text if cleaning fails
+    console.warn("LaTeX cleaning error:", error);
+    return text;
   }
 };
 
@@ -298,11 +305,11 @@ const PaperNavigationPage = () => {
   const [chatbotVisible, setChatbotVisible] = useState(false);
 
   // Screen dimensions for responsive footer
-  const [screenData, setScreenData] = useState(Dimensions.get('window'));
+  const [screenData, setScreenData] = useState(Dimensions.get("window").height ? Dimensions.get("window") : { width: 0, height: 0 });
 
   // Update screen dimensions on change
   useEffect(() => {
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+    const subscription = Dimensions.addEventListener("change", ({ window }) => {
       setScreenData(window);
     });
 
@@ -314,12 +321,11 @@ const PaperNavigationPage = () => {
   // Generate PDF URL more robustly
   const generatePdfUrl = () => {
     if (doi) {
-      // Extract arXiv ID from DOI (e.g., "10.48550/arXiv.2301.00001" -> "2301.00001")
       const arxivMatch = doi.match(/arXiv\.(\d+\.\d+)/);
       if (arxivMatch) {
         return `https://arxiv.org/pdf/${arxivMatch[1]}.pdf`;
       }
-      // Fallback: use the last part of DOI
+
       const documentId = doi.split("/").pop();
       if (documentId) {
         return `https://arxiv.org/pdf/${documentId}.pdf`;
@@ -329,19 +335,13 @@ const PaperNavigationPage = () => {
   };
 
   const pdfUrl = generatePdfUrl();
-  
-  // Debug PDF URL generation
-  useEffect(() => {
-    console.log("Mobile PaperNavigationPage - DOI:", doi);
-    console.log("Mobile PaperNavigationPage - Generated PDF URL:", pdfUrl);
-  }, [doi, pdfUrl]);
   const user_id = userId;
   const formattedDate = new Date(date).toLocaleDateString("en-US", {
     year: "numeric",
-    month: "short"
+    month: "short",
   });
   const slideAnim = useRef(
-    new Animated.Value(Dimensions.get("window").height)
+      new Animated.Value(Dimensions.get("window").height)
   ).current;
 
   const [contentError, setContentError] = useState({ abstract: false, pdf: false });
@@ -349,47 +349,51 @@ const PaperNavigationPage = () => {
 
   const memoizedSource = useMemo(() => {
     const cleanedSummary = cleanLatexText(summary) || "<p>No abstract available.</p>";
-    // Ensure proper HTML structure
-    const htmlContent = cleanedSummary.startsWith('<') ? cleanedSummary : `<p>${cleanedSummary}</p>`;
+    const htmlContent = cleanedSummary.startsWith("<")
+        ? cleanedSummary
+        : `<p>${cleanedSummary}</p>`;
     return { html: htmlContent };
   }, [summary]);
 
-  const memoizedBaseStyle = useMemo(() => ({
-    color: isDarkMode ? "#FFFFFF" : "#000000",
-    fontSize: 16,
-    lineHeight: 24,
-  }), [isDarkMode]);
+  const memoizedBaseStyle = useMemo(
+      () => ({
+        color: isDarkMode ? "#FFFFFF" : "#000000",
+        fontSize: 16,
+        lineHeight: 24,
+      }),
+      [isDarkMode]
+  );
 
-  const [reloadKey, setReloadKey] = useState({ abstract: 0, pdf: 0 }); // Separate keys for each content type
-
+  const [reloadKey, setReloadKey] = useState({ abstract: 0, pdf: 0 });
 
   // Reload PDF function
   const handleReload = (contentType) => {
     setContentError((prevErrors) => ({ ...prevErrors, [contentType]: false }));
-    setReloadKey((prevKeys) => ({ ...prevKeys, [contentType]: prevKeys[contentType] + 1 }));
+    setReloadKey((prevKeys) => ({
+      ...prevKeys,
+      [contentType]: prevKeys[contentType] + 1,
+    }));
   };
 
   const toggleTheme = () => setIsDarkMode((prevMode) => !prevMode);
-
 
   useEffect(() => {
     checkIfAlreadyLiked(paper_id, userId).then((res) => setLiked(res));
 
     checkIfAlreadyBookmarked(paper_id, userId).then((res) => setBookmarked(res));
 
-    getPaperComments(paper_id).then((res) => {
-      console.log("Comments response:", res);
-      if (res && res.comments) {
-        console.log("Setting comments:", res.comments);
-        setComments(res.comments);
-      } else {
-        console.log("No comments found or error occurred");
-        setComments([]);
-      }
-    }).catch((error) => {
-      console.error("Error in getPaperComments:", error);
-      setComments([]);
-    });
+    getPaperComments(paper_id)
+        .then((res) => {
+          if (res && res.comments) {
+            setComments(res.comments);
+          } else {
+            setComments([]);
+          }
+        })
+        .catch((error) => {
+          console.error("Error in getPaperComments:", error);
+          setComments([]);
+        });
 
     const checkAuthorship = async () => {
       const token = await AsyncStorage.getItem("jwtToken");
@@ -402,14 +406,14 @@ const PaperNavigationPage = () => {
       }
 
       const response = await fetch(
-        `${BASE_URL}/api/profile/auth/orcid/check?paperId=${paper_id}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
+          `${BASE_URL}/api/profile/auth/orcid/check?paperId=${paper_id}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
       );
 
       const result = await response.json();
@@ -428,7 +432,6 @@ const PaperNavigationPage = () => {
     fetchProfileData();
     checkAuthorship();
     incrementClickCount();
-
   }, []);
 
   function toggleLike(paperId) {
@@ -478,7 +481,6 @@ const PaperNavigationPage = () => {
         if (!res) {
           alert("Failed to comment on paper. Please try again.");
         } else {
-          // Refresh comments after adding a new one
           getPaperComments(paper_id).then((res) => {
             if (res && res.comments) {
               setComments(res.comments);
@@ -498,7 +500,9 @@ const PaperNavigationPage = () => {
         alert("You need to log in with ORCID before claiming authorship.");
         const ORCID_CLIENT_ID = "APP-H4ASFRRPPQLEYAAD";
         const ORCID_REDIRECT_URI = `${BASE_URL}/api/profile/auth/orcid/callback`;
-        const orcidAuthURL = `https://orcid.org/oauth/authorize?client_id=${ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri=${encodeURIComponent(ORCID_REDIRECT_URI)}`;
+        const orcidAuthURL = `https://orcid.org/oauth/authorize?client_id=${ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri=${encodeURIComponent(
+            ORCID_REDIRECT_URI
+        )}`;
         Linking.openURL(orcidAuthURL);
         return;
       }
@@ -546,7 +550,7 @@ const PaperNavigationPage = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ paper_id }),
       });
@@ -554,8 +558,6 @@ const PaperNavigationPage = () => {
       if (!response.ok) {
         const error = await response.json();
         console.error("Failed to increment click count:", error);
-      } else {
-        console.log("Click count incremented successfully");
       }
     } catch (error) {
       console.error("Error incrementing click count:", error);
@@ -569,408 +571,623 @@ const PaperNavigationPage = () => {
       });
       if (result.action === Share.sharedAction) {
         if (result.activityType) {
-          // Shared with activity
         } else {
-          // Shared without activity
         }
       } else if (result.action === Share.dismissedAction) {
-        // Dismissed
       }
     } catch (error) {
       alert(error.message);
     }
   };
 
-const handleLogout = async () => {
-  // Show confirmation dialog
-  Alert.alert(
-    "Logout Confirmation",
-    "Are you sure you want to logout?",
-    [
-      {
-        text: "No",
-        onPress: () => {
-          console.log("Logout canceled");
-          // User stays on current page - no navigation needed
-        },
-        style: "cancel"
-      },
-      {
-        text: "Yes",
-        onPress: async () => {
-          try {
-            // Clear all authentication data
-            await AsyncStorage.multiRemove([
-              "jwtToken", 
-              "userId", 
-              "profileData",
-              // Add any other keys you want to clear
-            ]);
-            
-            // Navigate to GuestExplorePage and clear navigation history
-            navigation.reset({
-              index: 0,
-              routes: [{ name: "GuestExplorePage" }],
-            });
-            
-            console.log("Successfully logged out to GuestExplorePage");
-          } catch (error) {
-            console.error("Logout error:", error);
-            // Fallback navigation
-            navigation.navigate("GuestExplorePage");
-          }
-        }
-      }
-    ],
-    { cancelable: false } // Prevents dismissing by tapping outside
-  );
-};
+  const handleLogout = async () => {
+    Alert.alert(
+        "Logout Confirmation",
+        "Are you sure you want to logout?",
+        [
+          {
+            text: "No",
+            onPress: () => {},
+            style: "cancel",
+          },
+          {
+            text: "Yes",
+            onPress: async () => {
+              try {
+                await AsyncStorage.multiRemove([
+                  "jwtToken",
+                  "userId",
+                  "profileData",
+                ]);
+
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: "GuestExplorePage" }],
+                });
+              } catch (error) {
+                console.error("Logout error:", error);
+                navigation.navigate("GuestExplorePage");
+              }
+            },
+          },
+        ],
+        { cancelable: false }
+    );
+  };
+
   return (
-    <SafeAreaView
-      style={[
-        styles.container,
-        isDarkMode ? styles.darkContainer : styles.lightContainer,
-      ]}
-    >
-
-      <View style={styles.topNav}>
-        <TouchableOpacity onPress={() => navigation.navigate("ProfilePage")}>
-          <FontAwesome name="user" size={24} color="white" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => navigation.navigate("Explore")}>
-          <FontAwesome name="compass" size={24} color="white" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={toggleTheme}>
-          <MaterialIcons
-            name={isDarkMode ? "wb-sunny" : "nightlight-round"}
-            size={24}
-            color="white"
-          />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleLogout}>
-          <MaterialIcons name="logout" size={24} color="white" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        style={[
-          styles.content,
-          isDarkMode ? styles.darkContent : styles.lightContent,
-        ]}
+      <SafeAreaView
+          style={[
+            styles.container,
+            isDarkMode ? styles.darkContainer : styles.lightContainer,
+          ]}
       >
-
-        <Text
-          style={[
-            styles.heading,
-            isDarkMode ? styles.darkText : styles.lightText,
-            {
-              width: '100%',
-              flexWrap: 'wrap',
-              textBreakStrategy: 'balanced',
-              borderBottomColor: isDarkMode ? '#444' : '#e0e0e0',
-            }
-          ]}
-        >
-          {cleanLatexText(title)}
-        </Text>
-        <View style={styles.categoryContainer}>
-          <Text
-            style={[
-              styles.category,
-              isDarkMode ? styles.darkText : styles.lightText,
-            ]}
-          >
-            {genre}
-          </Text>
-          <Text
-            style={[
-              styles.date,
-              isDarkMode ? styles.darkText : styles.lightText,
-            ]}
-          >
-            {formattedDate}
-          </Text>
+        <View style={styles.topNav}>
+          <TouchableOpacity onPress={() => navigation.navigate("ProfilePage")}>
+            <FontAwesome name="user" size={24} color="white" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate("Explore")}>
+            <FontAwesome name="compass" size={24} color="white" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={toggleTheme}>
+            <MaterialIcons
+                name={isDarkMode ? "wb-sunny" : "nightlight-round"}
+                size={24}
+                color="white"
+            />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout}>
+            <MaterialIcons name="logout" size={24} color="white" />
+          </TouchableOpacity>
         </View>
-        <Text
-          style={[
-            styles.author,
-            isDarkMode ? styles.darkText : styles.lightText,
-          ]}
-          onPress={() => navigation.navigate("ViewAuthorPage")}
-        >
-          {author}
-        </Text>
 
-        {isClaimed ? (
-          <View style={{ backgroundColor: "#C6F6D5", padding: 10, borderRadius: 8, marginBottom: 10 }}>
-            <Text style={{ color: "#2F855A", fontWeight: "bold" }}>
-              ✅ You are the verified author of this paper
+        <ScrollView
+            style={[
+              styles.content,
+              isDarkMode ? styles.darkContent : styles.lightContent,
+            ]}
+        >
+          <Text
+              style={[
+                styles.heading,
+                isDarkMode ? styles.darkText : styles.lightText,
+                {
+                  width: "100%",
+                  flexWrap: "wrap",
+                  textBreakStrategy: "balanced",
+                  borderBottomColor: isDarkMode ? "#444" : "#e0e0e0",
+                },
+              ]}
+          >
+            {cleanLatexText(title)}
+          </Text>
+          <View style={styles.categoryContainer}>
+            <Text
+                style={[
+                  styles.category,
+                  isDarkMode ? styles.darkText : styles.lightText,
+                ]}
+            >
+              {genre}
+            </Text>
+            <Text
+                style={[
+                  styles.date,
+                  isDarkMode ? styles.darkText : styles.lightText,
+                ]}
+            >
+              {formattedDate}
             </Text>
           </View>
-        ) : (
-          <TouchableOpacity
-            style={{ backgroundColor: "#057B34", padding: 10, borderRadius: 8, marginBottom: 10 }}
-            onPress={handleClaimAuthorship}
-          >
-            <Text style={{ color: "white", fontWeight: "bold", textAlign: "center" }}>
-              Claim Authorship
-            </Text>
-          </TouchableOpacity>
-        )}
-
-
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              selectedTab === "Abstract" && styles.activeTab,
-            ]}
-            onPress={() => setSelectedTab("Abstract")}
-          >
-            <Text
+          <Text
               style={[
-                styles.tabText,
-                selectedTab === "Abstract" && styles.activeTabText,
+                styles.author,
+                isDarkMode ? styles.darkText : styles.lightText,
               ]}
-            >
-              Abstract
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              selectedTab === "FullText" && styles.activeTab,
-            ]}
-            onPress={() => setSelectedTab("FullText")}
+              onPress={() => navigation.navigate("ViewAuthorPage")}
           >
-            <Text
-              style={[
-                styles.tabText,
-                selectedTab === "FullText" && styles.activeTabText,
-              ]}
-            >
-              Full Text
-            </Text>
-          </TouchableOpacity>
-        </View>
+            {author}
+          </Text>
 
-
-        {selectedTab === "Abstract" && (
-
-
-          <RenderHTML
-            key={reloadKey.abstract}
-            contentWidth={windowWidth}
-            source={memoizedSource}
-            baseStyle={memoizedBaseStyle}
-            onError={() =>
-              setContentError((prevErrors) => ({ ...prevErrors, abstract: true }))
-            }
-          />
-
-        )}
-
-
-        {selectedTab === "FullText" && (
-          contentError.pdf ? (
-            <View style={tw`p-5`}>
-              <Text style={tw`text-center text-red-500 text-lg font-bold`}>
-                Network Error
-              </Text>
-              <Text style={tw`text-center text-gray-700 mb-5`}>
-                Failed to load the PDF. Please check your connection and try again.
-              </Text>
-              <TouchableOpacity
-                style={tw`bg-blue-500 py-2 rounded-lg`}
-                onPress={() => handleReload("pdf")}
+          {isClaimed ? (
+              <View
+                  style={{
+                    backgroundColor: "#C6F6D5",
+                    padding: 10,
+                    borderRadius: 8,
+                    marginBottom: 10,
+                  }}
               >
-                <Text style={tw`text-white text-center font-bold`}>Reload PDF</Text>
-              </TouchableOpacity>
-            </View>
-          ) : pdfUrl ? (
-            <WebView
-              key={reloadKey.pdf} // Use reload key for PDF
-              source={{ uri: pdfUrl }}
-              style={{ height: Dimensions.get("window").height - 200 }}
-              originWhitelist={["*"]}
-              onError={() => setContentError((prevErrors) => ({ ...prevErrors, pdf: true }))}
-            />
+                <Text style={{ color: "#2F855A", fontWeight: "bold" }}>
+                  ✅ You are the verified author of this paper
+                </Text>
+              </View>
           ) : (
-            <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ color: 'gray', fontSize: 16 }}>
-                PDF not available for this paper
+              <TouchableOpacity
+                  style={{
+                    backgroundColor: "#057B34",
+                    padding: 10,
+                    borderRadius: 8,
+                    marginBottom: 10,
+                  }}
+                  onPress={handleClaimAuthorship}
+              >
+                <Text
+                    style={{ color: "white", fontWeight: "bold", textAlign: "center" }}
+                >
+                  Claim Authorship
+                </Text>
+              </TouchableOpacity>
+          )}
+
+          <View style={styles.tabContainer}>
+            <TouchableOpacity
+                style={[
+                  styles.tabButton,
+                  selectedTab === "Abstract" && styles.activeTab,
+                ]}
+                onPress={() => setSelectedTab("Abstract")}
+            >
+              <Text
+                  style={[
+                    styles.tabText,
+                    selectedTab === "Abstract" && styles.activeTabText,
+                  ]}
+              >
+                Abstract
               </Text>
-            </View>
-          )
-        )}
-      </ScrollView>
-
-      <View style={[styles.bottomNav, { 
-        height: screenData.width < 400 ? 70 : screenData.width < 600 ? 80 : 90,
-        paddingVertical: screenData.width < 400 ? 10 : screenData.width < 600 ? 15 : 20,
-        paddingHorizontal: screenData.width < 400 ? 10 : 15
-      }]}>
-        <TouchableOpacity style={[styles.navButton, {
-          minWidth: screenData.width < 400 ? 55 : screenData.width < 600 ? 60 : 70,
-          paddingHorizontal: screenData.width < 400 ? 8 : screenData.width < 600 ? 10 : 15,
-          paddingVertical: screenData.width < 400 ? 8 : screenData.width < 600 ? 10 : 12
-        }]} onPress={() => toggleLike(paper_id)}>
-          <FontAwesome name="heart" size={screenData.width < 400 ? 20 : 24} color={liked ? 'red' : 'white'} />
-          <Text style={[styles.navButtonText, { 
-            fontSize: screenData.width < 400 ? 10 : screenData.width < 600 ? 11 : 12,
-            marginTop: screenData.width < 400 ? 4 : 6
-          }]}>Like</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.navButton, {
-          minWidth: screenData.width < 400 ? 55 : screenData.width < 600 ? 60 : 70,
-          paddingHorizontal: screenData.width < 400 ? 8 : screenData.width < 600 ? 10 : 15,
-          paddingVertical: screenData.width < 400 ? 8 : screenData.width < 600 ? 10 : 12
-        }]} onPress={() => toggleBookmark(paper_id)}>
-          <FontAwesome name="bookmark" size={screenData.width < 400 ? 20 : 24} color={bookmarked ? 'blue' : 'white'} />
-          <Text style={[styles.navButtonText, { 
-            fontSize: screenData.width < 400 ? 10 : screenData.width < 600 ? 11 : 12,
-            marginTop: screenData.width < 400 ? 4 : 6
-          }]}>Bookmark</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.navButton, {
-          minWidth: screenData.width < 400 ? 55 : screenData.width < 600 ? 60 : 70,
-          paddingHorizontal: screenData.width < 400 ? 8 : screenData.width < 600 ? 10 : 15,
-          paddingVertical: screenData.width < 400 ? 8 : screenData.width < 600 ? 10 : 12
-        }]} onPress={() => setChatbotVisible(true)}>
-          <FontAwesome name="android" size={screenData.width < 400 ? 20 : 24} color="white" />
-          <Text style={[styles.navButtonText, { 
-            fontSize: screenData.width < 400 ? 10 : screenData.width < 600 ? 11 : 12,
-            marginTop: screenData.width < 400 ? 4 : 6
-          }]}>Chat AI</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.navButton, {
-          minWidth: screenData.width < 400 ? 55 : screenData.width < 600 ? 60 : 70,
-          paddingHorizontal: screenData.width < 400 ? 8 : screenData.width < 600 ? 10 : 15,
-          paddingVertical: screenData.width < 400 ? 8 : screenData.width < 600 ? 10 : 12
-        }]} onPress={showComments}>
-          <FontAwesome name="comment" size={screenData.width < 400 ? 20 : 24} color="white" />
-          <Text style={[styles.navButtonText, { 
-            fontSize: screenData.width < 400 ? 10 : screenData.width < 600 ? 11 : 12,
-            marginTop: screenData.width < 400 ? 4 : 6
-          }]}>Comment</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.navButton, {
-            minWidth: screenData.width < 400 ? 55 : screenData.width < 600 ? 60 : 70,
-            paddingHorizontal: screenData.width < 400 ? 8 : screenData.width < 600 ? 10 : 15,
-            paddingVertical: screenData.width < 400 ? 8 : screenData.width < 600 ? 10 : 12
-          }]}
-          onPress={() => navigation.navigate("ListenPage", { doi })}
-        >
-          <FontAwesome name="headphones" size={screenData.width < 400 ? 20 : 24} color="white" />
-          <Text style={[styles.navButtonText, { 
-            fontSize: screenData.width < 400 ? 10 : screenData.width < 600 ? 11 : 12,
-            marginTop: screenData.width < 400 ? 4 : 6
-          }]}>Listen</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Modal visible={commentsVisible} transparent animationType="none">
-        <Animated.View
-          style={[
-            styles.commentsContainer,
-            { transform: [{ translateY: slideAnim }] },
-          ]}
-        >
-          <View style={styles.commentsHeader}>
-            <Text style={styles.commentsTitle}>Comments</Text>
-            <TouchableOpacity onPress={hideComments}>
-              <Entypo name="cross" size={24} color="white" />
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={[
+                  styles.tabButton,
+                  selectedTab === "FullText" && styles.activeTab,
+                ]}
+                onPress={() => setSelectedTab("FullText")}
+            >
+              <Text
+                  style={[
+                    styles.tabText,
+                    selectedTab === "FullText" && styles.activeTabText,
+                  ]}
+              >
+                Full Text
+              </Text>
             </TouchableOpacity>
           </View>
-          <ScrollView style={styles.commentsContent}>{Array.isArray(comments) && comments.length > 0 ? (
-            comments
-              .sort((a, b) => {
-                // Use comment ID for chronological sorting
-                const commentIdA = a.commentId || a.comment_id || 0;
-                const commentIdB = b.commentId || b.comment_id || 0;
-                
-                return commentIdA - commentIdB; // Sort by comment ID: oldest first, newest at bottom
-              })
-              .map((comment, index) => {
-              const isMyComment = comment.userHandle === profileData?.username;
-              const isAuthorComment = isClaimed && isMyComment;
-              
-              return (
-                <View 
-                  key={index} 
-                  style={[
-                    styles.commentItemContainer,
-                    isMyComment ? styles.myCommentContainer : styles.otherCommentContainer
-                  ]}
-                >
-                  <View style={[
-                    styles.commentItem,
-                    isMyComment ? styles.myCommentItem : styles.otherCommentItem
-                  ]}>
-                    {/* UserName + Author Tag in One Line */}
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Text style={[
-                        styles.commentAuthor,
-                        isMyComment ? styles.myCommentAuthor : styles.otherCommentAuthor
-                      ]}>
-                        {comment.userName}
+
+          {selectedTab === "Abstract" && (
+              <RenderHTML
+                  key={reloadKey.abstract}
+                  contentWidth={windowWidth}
+                  source={memoizedSource}
+                  baseStyle={memoizedBaseStyle}
+                  onError={() =>
+                      setContentError((prevErrors) => ({
+                        ...prevErrors,
+                        abstract: true,
+                      }))
+                  }
+              />
+          )}
+
+          {selectedTab === "FullText" &&
+              (contentError.pdf ? (
+                  <View style={tw`p-5`}>
+                    <Text style={tw`text-center text-red-500 text-lg font-bold`}>
+                      Network Error
+                    </Text>
+                    <Text style={tw`text-center text-gray-700 mb-5`}>
+                      Failed to load the PDF. Please check your connection and try again.
+                    </Text>
+                    <TouchableOpacity
+                        style={tw`bg-blue-500 py-2 rounded-lg`}
+                        onPress={() => handleReload("pdf")}
+                    >
+                      <Text style={tw`text-white text-center font-bold`}>
+                        Reload PDF
                       </Text>
-                      {/* Show author tag only if this comment is from the current user who is the author */}
-                      {isAuthorComment && (
-                        <View style={styles.authorTag}>
-                          <Text style={styles.authorTagText}>Author</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={[
-                      styles.commentText,
-                      isMyComment ? styles.myCommentText : styles.otherCommentText
-                    ]}>
-                      {comment.content}
+                    </TouchableOpacity>
+                  </View>
+              ) : pdfUrl ? (
+                  <WebView
+                      key={reloadKey.pdf}
+                      source={{ uri: pdfUrl }}
+                      style={{ height: Dimensions.get("window").height - 200 }}
+                      originWhitelist={["*"]}
+                      onError={() =>
+                          setContentError((prevErrors) => ({
+                            ...prevErrors,
+                            pdf: true,
+                          }))
+                      }
+                  />
+              ) : (
+                  <View style={{ padding: 20, alignItems: "center" }}>
+                    <Text style={{ color: "gray", fontSize: 16 }}>
+                      PDF not available for this paper
                     </Text>
                   </View>
-                </View>
-              );
-            })
-          ) : (
-            <Text style={styles.noCommentsText}>No comments yet.</Text>
-          )}
-          </ScrollView>
-          <View style={styles.newCommentContainer}>
-            <TextInput
-              style={[
-                styles.commentInput,
-                isDarkMode ? styles.darkInput : styles.lightInput,
-              ]}
-              placeholder="Write a comment..."
-              placeholderTextColor="#888"
-              value={newComment}
-              onChangeText={setNewComment}
-            />
-            <TouchableOpacity
-              style={styles.addCommentButton}
-              onPress={addComment}
-            >
-              <Text style={styles.addCommentButtonText}>Post</Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-      </Modal>
+              ))}
+        </ScrollView>
 
-      <MobileChatbot
-        visible={chatbotVisible}
-        onClose={() => setChatbotVisible(false)}
-        context={summary || title || "No context available"}
-        pdfUrl={pdfUrl}
-        paperId={paper_id}
-        paperTitle={title}
-        paperDoi={doi}
-      />
-    </SafeAreaView>
+        <View
+            style={[
+              styles.bottomNav,
+              {
+                height:
+                    screenData.width < 400
+                        ? 70
+                        : screenData.width < 600
+                            ? 80
+                            : 90,
+                paddingVertical:
+                    screenData.width < 400
+                        ? 10
+                        : screenData.width < 600
+                            ? 15
+                            : 20,
+                paddingHorizontal: screenData.width < 400 ? 10 : 15,
+              },
+            ]}
+        >
+          <TouchableOpacity
+              style={[
+                styles.navButton,
+                {
+                  minWidth:
+                      screenData.width < 400
+                          ? 55
+                          : screenData.width < 600
+                              ? 60
+                              : 70,
+                  paddingHorizontal:
+                      screenData.width < 400
+                          ? 8
+                          : screenData.width < 600
+                              ? 10
+                              : 15,
+                  paddingVertical:
+                      screenData.width < 400
+                          ? 8
+                          : screenData.width < 600
+                              ? 10
+                              : 12,
+                },
+              ]}
+              onPress={() => toggleLike(paper_id)}
+          >
+            <FontAwesome
+                name="heart"
+                size={screenData.width < 400 ? 20 : 24}
+                color={liked ? "red" : "white"}
+            />
+            <Text
+                style={[
+                  styles.navButtonText,
+                  {
+                    fontSize:
+                        screenData.width < 400
+                            ? 10
+                            : screenData.width < 600
+                                ? 11
+                                : 12,
+                    marginTop: screenData.width < 400 ? 4 : 6,
+                  },
+                ]}
+            >
+              Like
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+              style={[
+                styles.navButton,
+                {
+                  minWidth:
+                      screenData.width < 400
+                          ? 55
+                          : screenData.width < 600
+                              ? 60
+                              : 70,
+                  paddingHorizontal:
+                      screenData.width < 400
+                          ? 8
+                          : screenData.width < 600
+                              ? 10
+                              : 15,
+                  paddingVertical:
+                      screenData.width < 400
+                          ? 8
+                          : screenData.width < 600
+                              ? 10
+                              : 12,
+                },
+              ]}
+              onPress={() => toggleBookmark(paper_id)}
+          >
+            <FontAwesome
+                name="bookmark"
+                size={screenData.width < 400 ? 20 : 24}
+                color={bookmarked ? "blue" : "white"}
+            />
+            <Text
+                style={[
+                  styles.navButtonText,
+                  {
+                    fontSize:
+                        screenData.width < 400
+                            ? 10
+                            : screenData.width < 600
+                                ? 11
+                                : 12,
+                    marginTop: screenData.width < 400 ? 4 : 6,
+                  },
+                ]}
+            >
+              Bookmark
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+              style={[
+                styles.navButton,
+                {
+                  minWidth:
+                      screenData.width < 400
+                          ? 55
+                          : screenData.width < 600
+                              ? 60
+                              : 70,
+                  paddingHorizontal:
+                      screenData.width < 400
+                          ? 8
+                          : screenData.width < 600
+                              ? 10
+                              : 15,
+                  paddingVertical:
+                      screenData.width < 400
+                          ? 8
+                          : screenData.width < 600
+                              ? 10
+                              : 12,
+                },
+              ]}
+              onPress={() => setChatbotVisible(true)}
+          >
+            <FontAwesome
+                name="android"
+                size={screenData.width < 400 ? 20 : 24}
+                color="white"
+            />
+            <Text
+                style={[
+                  styles.navButtonText,
+                  {
+                    fontSize:
+                        screenData.width < 400
+                            ? 10
+                            : screenData.width < 600
+                                ? 11
+                                : 12,
+                    marginTop: screenData.width < 400 ? 4 : 6,
+                  },
+                ]}
+            >
+              Chat AI
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+              style={[
+                styles.navButton,
+                {
+                  minWidth:
+                      screenData.width < 400
+                          ? 55
+                          : screenData.width < 600
+                              ? 60
+                              : 70,
+                  paddingHorizontal:
+                      screenData.width < 400
+                          ? 8
+                          : screenData.width < 600
+                              ? 10
+                              : 15,
+                  paddingVertical:
+                      screenData.width < 400
+                          ? 8
+                          : screenData.width < 600
+                              ? 10
+                              : 12,
+                },
+              ]}
+              onPress={showComments}
+          >
+            <FontAwesome
+                name="comment"
+                size={screenData.width < 400 ? 20 : 24}
+                color="white"
+            />
+            <Text
+                style={[
+                  styles.navButtonText,
+                  {
+                    fontSize:
+                        screenData.width < 400
+                            ? 10
+                            : screenData.width < 600
+                                ? 11
+                                : 12,
+                    marginTop: screenData.width < 400 ? 4 : 6,
+                  },
+                ]}
+            >
+              Comment
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+              style={[
+                styles.navButton,
+                {
+                  minWidth:
+                      screenData.width < 400
+                          ? 55
+                          : screenData.width < 600
+                              ? 60
+                              : 70,
+                  paddingHorizontal:
+                      screenData.width < 400
+                          ? 8
+                          : screenData.width < 600
+                              ? 10
+                              : 15,
+                  paddingVertical:
+                      screenData.width < 400
+                          ? 8
+                          : screenData.width < 600
+                              ? 10
+                              : 12,
+                },
+              ]}
+              onPress={() => navigation.navigate("ListenPage", { doi })}
+          >
+            <FontAwesome
+                name="headphones"
+                size={screenData.width < 400 ? 20 : 24}
+                color="white"
+            />
+            <Text
+                style={[
+                  styles.navButtonText,
+                  {
+                    fontSize:
+                        screenData.width < 400
+                            ? 10
+                            : screenData.width < 600
+                                ? 11
+                                : 12,
+                    marginTop: screenData.width < 400 ? 4 : 6,
+                  },
+                ]}
+            >
+              Listen
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Modal visible={commentsVisible} transparent animationType="none">
+          <Animated.View
+              style={[
+                styles.commentsContainer,
+                { transform: [{ translateY: slideAnim }] },
+              ]}
+          >
+            <View style={styles.commentsHeader}>
+              <Text style={styles.commentsTitle}>Comments</Text>
+              <TouchableOpacity onPress={hideComments}>
+                <Entypo name="cross" size={24} color="white" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.commentsContent}>
+              {Array.isArray(comments) && comments.length > 0 ? (
+                  comments
+                      .sort((a, b) => {
+                        const commentIdA = a.commentId || a.comment_id || 0;
+                        const commentIdB = b.commentId || b.comment_id || 0;
+
+                        return commentIdA - commentIdB;
+                      })
+                      .map((comment, index) => {
+                        const isMyComment = comment.userHandle === profileData?.username;
+                        const isAuthorComment = isClaimed && isMyComment;
+
+                        return (
+                            <View
+                                key={index}
+                                style={[
+                                  styles.commentItemContainer,
+                                  isMyComment
+                                      ? styles.myCommentContainer
+                                      : styles.otherCommentContainer,
+                                ]}
+                            >
+                              <View
+                                  style={[
+                                    styles.commentItem,
+                                    isMyComment
+                                        ? styles.myCommentItem
+                                        : styles.otherCommentItem,
+                                  ]}
+                              >
+                                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                  <Text
+                                      style={[
+                                        styles.commentAuthor,
+                                        isMyComment
+                                            ? styles.myCommentAuthor
+                                            : styles.otherCommentAuthor,
+                                      ]}
+                                  >
+                                    {comment.userName}
+                                  </Text>
+                                  {isAuthorComment && (
+                                      <View style={styles.authorTag}>
+                                        <Text style={styles.authorTagText}>Author</Text>
+                                      </View>
+                                  )}
+                                </View>
+                                <Text
+                                    style={[
+                                      styles.commentText,
+                                      isMyComment
+                                          ? styles.myCommentText
+                                          : styles.otherCommentText,
+                                    ]}
+                                >
+                                  {comment.content}
+                                </Text>
+                              </View>
+                            </View>
+                        );
+                      })
+              ) : (
+                  <Text style={styles.noCommentsText}>No comments yet.</Text>
+              )}
+            </ScrollView>
+            <View style={styles.newCommentContainer}>
+              <TextInput
+                  style={[
+                    styles.commentInput,
+                    isDarkMode ? styles.darkInput : styles.lightInput,
+                  ]}
+                  placeholder="Write a comment..."
+                  placeholderTextColor="#888"
+                  value={newComment}
+                  onChangeText={setNewComment}
+              />
+              <TouchableOpacity
+                  style={styles.addCommentButton}
+                  onPress={addComment}
+              >
+                <Text style={styles.addCommentButtonText}>Post</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </Modal>
+
+        <MobileChatbot
+            visible={chatbotVisible}
+            onClose={() => setChatbotVisible(false)}
+            context={summary || title || "No context available"}
+            pdfUrl={pdfUrl}
+            paperId={paper_id}
+            paperTitle={title}
+            paperDoi={doi}
+        />
+      </SafeAreaView>
   );
 };
-
 
 export default PaperNavigationPage;
 
@@ -1100,17 +1317,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   commentItemContainer: {
-    width: '100%',
+    width: "100%",
     marginBottom: 10,
   },
   myCommentContainer: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
   },
   otherCommentContainer: {
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
   },
   commentItem: {
-    maxWidth: '80%',
+    maxWidth: "80%",
     padding: 10,
     borderRadius: 10,
   },
@@ -1126,10 +1343,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   myCommentAuthor: {
-    color: "#FFFFFF", 
+    color: "#FFFFFF",
   },
   otherCommentAuthor: {
-    color: "#000000", 
+    color: "#000000",
   },
   commentText: {
     marginBottom: 5,
@@ -1178,20 +1395,18 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "bold",
   },
-
   authorTag: {
-    backgroundColor: "#ffcc00", 
+    backgroundColor: "#ffcc00",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
     marginLeft: 6,
     alignSelf: "center",
     justifyContent: "center",
-    height: 18,  
+    height: 18,
     flexDirection: "row",
     alignItems: "center",
   },
-
   authorTagText: {
     color: "#000",
     fontWeight: "bold",

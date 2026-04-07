@@ -9,10 +9,11 @@ import {
   checkIfAlreadyBookmarked,
 } from "../functions/PaperFunc"
 import { useEffect, useState } from "react"
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal } from "react-native"
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Share } from "react-native"
 import { FontAwesome } from "@expo/vector-icons"
 import { fetchComments } from "../../../api"
 import AsyncStorage from "@react-native-async-storage/async-storage"
+import SharePopup from "./SharePopup.native.jsx"
 
 // Function to clean LaTeX formatting and make it readable
 const cleanLatexText = (text) => {
@@ -287,7 +288,8 @@ export function PaperListItem({ item, navigation, userId, showAuthModal }) {
   const [showComments, setShowComments] = useState(false)
   const [comments, setComments] = useState([])
   const [modalVisible, setModalVisible] = useState(false);
-
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [sharePayload, setSharePayload] = useState(null);
   const user_id = userId
 
   function toggleLike(paperId) {
@@ -327,11 +329,29 @@ export function PaperListItem({ item, navigation, userId, showAuthModal }) {
     }
   }
 
-  function handleShare() {
+  //refer to this function for the word limit 
+  async function handleShare() {
     if (!user_id) {
-      if (showAuthModal) showAuthModal()
-      return
+      if (showAuthModal) showAuthModal();
+      return;
     }
+
+    const paperLink = item?.doi
+      ? `https://doi.org/${item.doi}`
+      : `https://tictectoe.org/PaperNavigationPage/${item.paper_id}`;
+
+    const payload = {
+      url: paperLink,
+      title: cleanLatexText(item.title),
+      summary: cleanLatexText(item.summary),
+      author: item.author_names,
+      doi: item.doi,
+      id: item.paper_id,
+      post: item,
+    };
+
+    setSharePayload(payload);
+    setIsShareOpen(true);
   }
 
   const toggleComments = async () => {
@@ -613,18 +633,25 @@ export function PaperListItem({ item, navigation, userId, showAuthModal }) {
         </View>
       </LinearGradient>
 
+
       {/* Main Content */}
       <View style={styles.cardContent}>
-        <Text style={styles.titleText}>
-          {cleanLatexText(item.title)?.replace(/\s+/g, " ").trim()}
-        </Text>
+
+        <TouchableOpacity onPress={handlePaperClick} activeOpacity={0.7}>
+          <Text style={styles.titleText}>
+            {cleanLatexText(item.title)?.replace(/\s+/g, " ").trim()}
+          </Text>
+        </TouchableOpacity>
+
         <Text style={styles.authors}>{displayedAuthors}</Text>
+
         <TouchableOpacity onPress={() => setModalVisible(true)}>
           <Text style={styles.summaryText}>
             {cleanLatexText(item.summary)?.replace(/\s+/g, " ").trim()}
           </Text>
         </TouchableOpacity>
       </View>
+
      
 
       {/* Action Buttons */}
@@ -690,6 +717,16 @@ export function PaperListItem({ item, navigation, userId, showAuthModal }) {
           )}
         </View>
       )}
+      <SharePopup
+        isOpen={isShareOpen}
+        onClose={() => setIsShareOpen(false)}
+        url={sharePayload?.url}
+        title={sharePayload?.title}
+        summary={sharePayload?.summary}
+        author={sharePayload?.author}
+        doi={sharePayload?.doi}
+        id={sharePayload?.id}
+      />
     </View>
   )
 }

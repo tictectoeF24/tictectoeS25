@@ -1,7 +1,5 @@
-
-import React, { useState, useRef, useEffect } from "react";
-import { useRoute } from "@react-navigation/native";
-import { useNavigation } from "@react-navigation/native";
+import { useState, useRef, useEffect } from "react";
+import { useRoute, useNavigation } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -11,48 +9,77 @@ import {
   TextInput,
   SafeAreaView,
   Image,
-  Keyboard,
   Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import tw from "twrnc";
-import { verifyOtp } from "../../api";
+import { verifyOtp, setAuthToken } from "../../api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setAuthToken } from "../../api";
+
+const OTP_LENGTH = 6;
 
 const AuthenticationVerifyPage = () => {
-  const [otp, setInputValue] = useState("");
+  const [otpDigits, setOtpDigits] = useState(Array(OTP_LENGTH).fill(""));
   const [switchEnabled, setSwitchEnable] = useState(false);
+  const [emailState, setEmailState] = useState("");
+
   const route = useRoute();
+  const navigation = useNavigation();
+  const inputsRef = useRef([]);
+
   const { email } = route?.params || "(No email provided)";
   const textColor = switchEnabled ? "text-black" : "text-white";
-  const [emailState, setEmailState] = useState("");
-  const navigation = useNavigation();
+
+  const backgroundColors = switchEnabled
+    ? ["#0C1C1A", "#2B5A3E"] // dark mode
+    : ["#064E41", "#3D8C45"]; // light mode
+
   const togglePageTheme = () => {
-    setSwitchEnable((previousState) => !previousState);
+    setSwitchEnable(prev => !prev);
   };
+
   useEffect(() => {
     const localStorageEmail = localStorage.getItem("verifyPageEmail");
     if (email) {
       setEmailState(email);
       localStorage.setItem("verifyPageEmail", email);
-    } else {
-      if (localStorageEmail) {
-        setEmailState(localStorageEmail)
-      }
+    } else if (localStorageEmail) {
+      setEmailState(localStorageEmail);
     }
-  }, [email, route])
+  }, [email, route]);
 
-  const handleUserInput = (text) => {
-    setInputValue(text);
-  };
+  // numeric-only change handler, same behaviour as VerifyResetOtpPage
+  const handleChangeDigit = (val, index) => {
+    const digit = val.replace(/[^0-9]/g, "");
+    const updated = [...otpDigits];
 
-  const handleSubmit = async () => {
-    if (!otp) {
-      Alert.alert("Error", "Please enter the one-time password");
+    if (digit.length === 0) {
+      updated[index] = "";
+      setOtpDigits(updated);
       return;
     }
 
+    updated[index] = digit[digit.length - 1]; // last digit in case of paste
+    setOtpDigits(updated);
+
+    if (index < OTP_LENGTH - 1) {
+      inputsRef.current[index + 1]?.focus();
+    }
+  };
+
+  const handleKeyPress = (e, index) => {
+    if (e.nativeEvent.key === "Backspace" && !otpDigits[index] && index > 0) {
+      inputsRef.current[index - 1]?.focus();
+    }
+  };
+
+  const handleSubmit = async () => {
+    const otp = otpDigits.join("");
+
+    if (!otp || otp.length !== OTP_LENGTH) {
+      Alert.alert("Error", `Please enter the ${OTP_LENGTH}-digit code`);
+      return;
+    }
 
     try {
       const response = await verifyOtp(emailState, otp);
@@ -62,30 +89,30 @@ const AuthenticationVerifyPage = () => {
         await AsyncStorage.setItem("jwtToken", token);
         localStorage.removeItem("verifyPageEmail");
 
-        // Set the token for future requests
         setAuthToken(token);
-
         alert("Success Account created successfully");
         navigation.navigate("Explore");
       } else {
         alert("Error Verification failed");
       }
     } catch (error) {
-      if (error?.message == "Invalid token") {
-        signOut();
+      if (error?.message === "Invalid token") {
+        // signOut(); // if you have this defined somewhere globally
       }
-      alert("Error", error.toString());
+      alert("Error " + error.toString());
     }
   };
 
+  const boxBase =
+    "w-10 h-12 mx-1 rounded-md text-center text-lg font-semibold";
+
   return (
     <LinearGradient
-      colors={["#064E41", "#3D8C45"]}
+      colors={backgroundColors}
       style={tw`flex flex-1 flex-col h-full w-full py-14 items-center`}
     >
       <SafeAreaView style={tw`flex flex-col flex-1 h-full w-full`}>
-        <TouchableWithoutFeedback >
-
+        <TouchableWithoutFeedback>
           <View
             style={tw`absolute top-14 left-0 right-0 items-center mx-10 my-10`}
           >
@@ -95,7 +122,8 @@ const AuthenticationVerifyPage = () => {
                   source={require("../../assets/Logo-Transparent.png")}
                   style={tw`w-20 h-20 mr--5`}
                 />
-                <Text style={tw`font-bold text-3xl text-white ml-2 mr-12`}
+                <Text
+                  style={tw`font-bold text-3xl text-white ml-2 mr-12`}
                   onPress={() => navigation.navigate("LandingPage")}
                 >
                   Tic Tec Toe
@@ -117,26 +145,37 @@ const AuthenticationVerifyPage = () => {
               Enter the OTP sent to {emailState}
             </Text>
 
-            <TextInput
-              style={tw`w-80 h-15 rounded-md mx-10 p-4 ${switchEnabled ? `bg-black text-white` : "bg-white text-black"
-                }`}
-              onChangeText={handleUserInput}
-              value={otp}
-              keyboardType="numeric"
-              maxLength={6}
-              placeholder="One Time Password*"
-              placeholderTextColor={switchEnabled ? "#999" : "#666"}
-              onSubmitEditing={handleSubmit}
-            ></TextInput>
+            {/* OTP boxes */}
+            <View style={tw`flex-row mt-2 mb-4`}>
+              {otpDigits.map((digit, index) => (
+                <TextInput
+                  key={index}
+                  ref={ref => (inputsRef.current[index] = ref)}
+                  style={tw`${boxBase} ${
+                    switchEnabled
+                      ? "bg-black text-white border border-white/30"
+                      : "bg-white text-black"
+                  }`}
+                  value={digit}
+                  onChangeText={val => handleChangeDigit(val, index)}
+                  onKeyPress={e => handleKeyPress(e, index)}
+                  keyboardType="number-pad"
+                  maxLength={1}
+                  textContentType="oneTimeCode"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              ))}
+            </View>
 
             <TouchableOpacity
               style={[
-                tw` mt-8 mb-1 w-60 h-15 shadow-lg rounded-lg flex items-center justify-center`,
+                tw`mt-8 mb-1 w-60 h-15 shadow-lg rounded-lg flex items-center justify-center`,
                 { backgroundColor: "#57B360" },
               ]}
               onPress={handleSubmit}
             >
-              <Text style={tw`text-white font-bold text-lg ${textColor} `}>
+              <Text style={tw`font-bold text-lg ${textColor}`}>
                 Verify
               </Text>
             </TouchableOpacity>

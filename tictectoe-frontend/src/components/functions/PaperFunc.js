@@ -180,12 +180,28 @@ export async function bookmarkPaper(paperId) {
 // UNBOOKMARK
 export async function unbookmarkPaper(paperId) {
    const token = await AsyncStorage.getItem("jwtToken");
+   if (!token) {
+      console.error("No token found for unbookmark");
+      return false;
+   }
+   
+   if (!paperId) {
+      console.error("No paperId provided for unbookmark");
+      return false;
+   }
+   
+   console.log("unbookmarkPaper called with paperId:", paperId);
+   
    const controller = new AbortController();
    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
    try {
+      const url = `${BASE_URL}/api/paper/unbookmark`;
+      console.log("Making request to:", url);
+      console.log("Request body:", { paper_id: paperId });
+      
       const response = await fetch(
-         `${BASE_URL}/api/paper/unbookmark`,
+         url,
          {
             method: "POST",
             headers: {
@@ -199,10 +215,37 @@ export async function unbookmarkPaper(paperId) {
          }
       );
       clearTimeout(timeoutId);
-      return response.ok;
+      
+      const responseData = await response.json().catch(() => ({}));
+      
+      if (!response.ok) {
+         console.error("Unbookmark failed:", {
+            status: response.status,
+            statusText: response.statusText,
+            error: responseData
+         });
+         return false;
+      }
+      
+      console.log("Unbookmark successful:", responseData);
+      return true;
    } catch (error) {
-      if (error.name === 'AbortError') return false;
-      console.error(error);
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+         console.error("Unbookmark request timed out");
+         return false;
+      }
+      console.error("Unbookmark fetch error:", {
+         name: error.name,
+         message: error.message,
+         stack: error.stack
+      });
+      
+      // Check if it's a network error
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+         console.error("Network error - is the backend server running? Check:", `${BASE_URL}/api/paper/unbookmark`);
+      }
+      
       return false;
    }
 }

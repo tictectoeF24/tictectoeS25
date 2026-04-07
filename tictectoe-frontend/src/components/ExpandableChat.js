@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Animated,
   View,
@@ -10,7 +10,6 @@ import {
   Modal,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
-
 
 const ExpandableChatApp = ({ visible, onClose }) => {
   const [messages, setMessages] = useState([
@@ -53,7 +52,7 @@ const ExpandableChatApp = ({ visible, onClose }) => {
     });
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (visible) {
       animateOpen();
     } else {
@@ -73,68 +72,62 @@ const ExpandableChatApp = ({ visible, onClose }) => {
   };
 
   return (
-    <Modal transparent visible={visible} animationType="fade">
-      <View style={styles.overlay}>
-        <Animated.View
-          style={[
-            styles.chatContainer,
-            {
-              height: heightAnim,
-              opacity: opacityAnim,
-            },
-          ]}
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerText}>Chat with AI ✨</Text>
-            <TouchableOpacity onPress={animateClose}>
-              <FontAwesome name="times" size={20} color="#fff" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Messages */}
-          <ScrollView
-            style={styles.messagesContainer}
-            contentContainerStyle={{ paddingBottom: 60 }}
+      <Modal transparent visible={visible} animationType="fade">
+        <View style={styles.overlay}>
+          <Animated.View
+              style={[
+                styles.chatContainer,
+                {
+                  height: heightAnim,
+                  opacity: opacityAnim,
+                },
+              ]}
           >
-            {messages.map((msg, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.messageBubble,
-                  msg.from === "user" ? styles.userBubble : styles.aiBubble,
-                ]}
-              >
-                <Text
-                  style={{
-                    color: msg.from === "user" ? "#fff" : "#333",
-                  }}
-                >
-                  {msg.content}
-                </Text>
-              </View>
-            ))}
-          </ScrollView>
+            <View style={styles.header}>
+              <Text style={styles.headerText}>Chat with AI ✨</Text>
+              <TouchableOpacity onPress={animateClose}>
+                <FontAwesome name="times" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
 
-          {/* Input */}
-          <View style={styles.inputRow}>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder="Type your message..."
-              style={styles.input}
-              onSubmitEditing={handleSend}
-            />
-            <TouchableOpacity
-              onPress={handleSend}
-              style={styles.sendButton}
+            <ScrollView
+                style={styles.messagesContainer}
+                contentContainerStyle={{ paddingBottom: 60 }}
             >
-              <FontAwesome name="send" size={16} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-      </View>
-    </Modal>
+              {messages.map((msg, index) => (
+                  <View
+                      key={index}
+                      style={[
+                        styles.messageBubble,
+                        msg.from === "user" ? styles.userBubble : styles.aiBubble,
+                      ]}
+                  >
+                    <Text
+                        style={{
+                          color: msg.from === "user" ? "#fff" : "#333",
+                        }}
+                    >
+                      {msg.content}
+                    </Text>
+                  </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.inputRow}>
+              <TextInput
+                  value={input}
+                  onChangeText={setInput}
+                  placeholder="Type your message..."
+                  style={styles.input}
+                  onSubmitEditing={handleSend}
+              />
+              <TouchableOpacity onPress={handleSend} style={styles.sendButton}>
+                <FontAwesome name="send" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
   );
 };
 

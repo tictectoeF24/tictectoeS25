@@ -1,6 +1,3 @@
-
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
 const { createClient } = require("@supabase/supabase-js");
 const axios = require("axios");
 const pdf = require("pdf-parse");

@@ -1,3 +1,4 @@
+/* eslint-disable no-undef, no-unused-vars */
 const { createClient } = require("@supabase/supabase-js");
 const axios = require("axios");
 const fs = require("fs");
@@ -9,7 +10,8 @@ const cron = require("node-cron");
 const os = require("os");
 const sgMail = require("@sendgrid/mail");
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -40,7 +42,6 @@ const convertPdfToLatex = async (pdfUrl, doi) => {
     return new Promise((resolve, reject) => {
       exec(command, (error, stdout, stderr) => {
         if (error) {
-          // console.error("❌ Error converting PDF:", stderr || error.message);
           return reject(null);
         }
 
@@ -63,6 +64,13 @@ const convertPdfToLatex = async (pdfUrl, doi) => {
     return null;
   }
 };
+
+async function extractPlainTextFromPdf(pdfUrl) {
+  const resp = await axios.get(pdfUrl, { responseType: "arraybuffer" });
+  const pdfData = await pdfParse(resp.data);
+  const text = (pdfData.text || "").trim();
+  return text.length ? text : null;
+}
 
 const executeCommand = (command, description) => {
   return new Promise((resolve, reject) => {
@@ -162,13 +170,195 @@ const uploadSegmentsToSupabase = async (tempDir, sanitizedDoi) => {
 };
 
 /**
+ * Fetches author uploaded latex code for the paper, extracts it and serves to a helper for processing.
+ * @param {String} arxivId 
+ * @returns 
+ */
+const fetchArxivSourceLatex = async (arxivId) => {
+  if (!arxivId) return null;
+
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arxiv-src-"));
+  const tarPath = path.join(tmpRoot, "source.tar");
+  const extractDir = path.join(tmpRoot, "src");
+
+  try {
+    const sourceUrl = `https://arxiv.org/e-print/${encodeURIComponent(arxivId)}`;
+    const response = await axios.get(sourceUrl, { responseType: "arraybuffer", timeout: 30000 });
+    fs.writeFileSync(tarPath, Buffer.from(response.data));
+    fs.mkdirSync(extractDir);
+
+    await executeCommand(`tar -xf "${tarPath}" -C "${extractDir}"`, "Extract arXiv source");
+
+    const texFiles = [];
+    (function walk(dir) {
+      for (const entry of fs.readdirSync(dir)) {
+        const full = path.join(dir, entry);
+        const stats = fs.statSync(full);
+        if (stats.isDirectory()) walk(full);
+        else if (entry.toLowerCase().endsWith(".tex")) texFiles.push(full);
+      }
+    })(extractDir);
+
+    if (texFiles.length === 0) return null;
+
+    texFiles.sort((a, b) => fs.statSync(b).size - fs.statSync(a).size);
+    const preferred = texFiles.find((file) => {
+      const content = fs.readFileSync(file, "utf-8");
+      return /\\begin{document}/.test(content);
+    });
+
+    return fs.readFileSync(preferred || texFiles[0], "utf-8");
+  } catch (err) {
+    console.error("Failed to fetch official LaTeX:", err.message);
+    return null;
+  } finally {
+    try {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    } catch {
+      /* ignore cleanup errors */
+    }
+  }
+};
+
+/**
+ * Takes the paper url to generate latex_content for model processing.
+ * @param {Object} paper 
+ * @returns 
+ */
+const ensureLatexContentForPaper = async (paper) => {
+  if (!paper) throw new Error("Missing paper object");
+  const pdfUrl = paper.pdf_url;
+  const arxivId = paper.doi?.replace(/^https?:\/\/arxiv.org\/abs\//, "");
+  let latexContent = null;
+
+  if (arxivId) {
+    latexContent = await fetchArxivSourceLatex(arxivId);
+    console.log("tarball length:", latexContent?.length || 0);
+  }
+
+  if (!latexContent || latexContent.length < 10000) {
+    if (!pdfUrl) throw new Error(`Missing pdf_url for DOI ${paper.doi}`);
+    console.log("Tarball length too small, using text parsing for context")
+    const pdfText = await extractPlainTextFromPdf(pdfUrl);
+    latexContent = pdfText;
+    console.log("text extracted: " + latexContent.length);
+  }
+
+  // eslint-disable-next-line no-control-regex
+  const sanitize = (text) => (text ? text.replace(/\u0000/g, "").trim() : "");
+  latexContent = sanitize(latexContent);
+
+  if (!latexContent || !latexContent.trim()) {
+    throw new Error(`No content extracted for DOI ${paper.doi}`);
+  }
+
+  const { error } = await supabase
+    .from("paper")
+    .update({ latex_content: latexContent })
+    .eq("doi", paper.doi);
+
+  if (error) throw error;
+
+  return latexContent;
+};
+/**
+ * Loads Gemini model instance and prompts it to generate TTS formatted sections by using latex_content
+ * @param {String} doi 
+ * @returns 
+ */
+
+async function generateProcessedPaperJsonForDoi(doi) {
+  if (!GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not configured");
+  }
+
+  // 1) Fetch the paper from Supabase
+  const { data: paper, error } = await supabase
+    .from("paper")
+    .select("title, summary, latex_content, processed_papers_json")
+    .eq("doi", doi)
+    .single();
+
+  if (error || !paper) {
+    throw new Error(`Paper not found for DOI ${doi}: ${error?.message}`);
+  }
+
+  // Prefer LaTeX/full text if available, otherwise fall back to summary
+  const context = paper.latex_content;
+  if (!context || !context.trim()) {
+    throw new Error(`No content available to summarize for DOI ${doi}`);
+  }
+
+  // 2) Build the prompt you specified
+  const question = `
+You are preparing text for TTS. Read the paper "${paper.title}" and return a JSON object. Keys must be the major sections only (e.g., "abstract", "introduction") and cover all the details discussed. Each value must be { "summary": "<concise paragraph optimized for speech>" }. Return valid JSON only, DO NOT INCLUDE LATEX COMMANDS and backslashes.
+`.trim();
+
+  const ai = new GoogleGenerativeAI(GEMINI_API_KEY);
+  const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+  const prompt = `Context:\n${context}\n\nInstruction:\n${question}`;
+
+  // 3) Call Gemini
+  let processed = null;
+
+  while (processed == null) {
+    try {
+      const result = await model.generateContent(prompt);  // 1
+      let raw = (result.response.text() || "").trim();     // 2
+      if (!raw) throw new Error("Empty response from model");
+
+      // 3. Try to parse JSON
+      try {
+        processed = JSON.parse(raw);
+      } catch {
+        raw = raw
+          .replace(/^```json\s*/i, "")
+          .replace(/^```/i, "")
+          .replace(/```$/i, "")
+          .trim();
+          raw = raw.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+        processed = JSON.parse(raw);                            // 4
+      }
+    } catch (err) {                                        // 5
+      console.log(`[Gemini Sections] failed attempt`, err.message);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+
+  // 5) Persist to Supabase
+  const orderedSections = Object.entries(processed).map(([title, value], index) => ({
+  order: index,
+  title,
+  summary:
+    getSummaryText(value),
+}));
+const {error: updateError} = await supabase
+  .from("paper")
+  .update({ processed_papers_json: orderedSections })
+  .eq("doi", doi);
+  if (updateError) console.error(`[Gemini Sections] Supabase update failed for ${doi}:`, updateError);
+  
+  console.log(processed);
+  return processed;
+}
+
+const getSummaryText = (value) => {
+  if (typeof value === "string") return value;
+  if (typeof value?.summary === "string") return value.summary;
+  if (typeof value?.summary?.summary === "string") return value.summary.summary;
+  return "";
+};
+
+
+/**
  * Given an array of section texts and a DOI,
  * synthesize each section via Google TTS, upload
  * to Supabase, and return the ordered list of URLs.
  * Also updates the DB incrementally after each upload.
  */
 async function generateAndUploadFromJson(sectionTexts, doi) {
-  const sanitizedDoi = encodeURIComponent(doi.replace(/[:\/\\?]/g, "_"));
+  const sanitizedDoi = encodeURIComponent(doi.replace(/[:/\\?]/g, "_"));
   const ttsUrl = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(process.env.GOOGLE_API_KEY)}`;
   const segmentUrls = [];
 
@@ -191,8 +381,7 @@ async function generateAndUploadFromJson(sectionTexts, doi) {
       input: { text },
       voice: {
         languageCode: "en-US",
-        name: "en-US-Chirp3-HD-Fenrir",
-        ssmlGender: "NEUTRAL"
+        name: "en-US-Chirp3-HD-Fenrir"
       },
       audioConfig: {
         audioEncoding: "MP3",
@@ -250,11 +439,12 @@ const getAudioSegments = async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabase
-      .from("paper")
-      .select("title, pdf_url, audio_urls, processed_papers_json")
-      .eq("doi", doi)
-      .single();
+   const { data, error } = await supabase
+  .from("paper")
+  .select("title, author_names, pdf_url, audio_urls, processed_papers_json")
+  .eq("doi", doi)
+  .single();
+
 
     if (error || !data) {
       console.error("Error fetching paper:", error || "Paper not found");
@@ -277,7 +467,7 @@ const getAudioSegments = async (req, res) => {
     // Calculate total sections from processed JSON
     const totalSections = procJson ?
       Object.values(procJson).filter(section =>
-        section && section.summary && section.summary.trim().length > 0
+        getSummaryText(section).trim().length > 0
       ).length : 0;
 
     // Check if generation is needed
@@ -291,23 +481,25 @@ const getAudioSegments = async (req, res) => {
         console.error("Background generation failed:", err);
       });
 
-      return res.json({
-        title: data.title,
-        segments: currentSegments,
-        status: "generating",
-        progress: currentSegments.length,
-        total: totalSections
-      });
+     return res.json({
+  title: data.title,
+  author: data.author_names,
+  segments: currentSegments,
+  status: "generating",
+  progress: currentSegments.length,
+  total: totalSections
+});
+
     }
 
-    // Return existing segments
-    return res.json({
-      title: data.title,
-      segments: currentSegments,
-      status: "completed",
-      progress: currentSegments.length,
-      total: totalSections
-    });
+   return res.json({
+  title: data.title,
+  author: data.author_names,
+  segments: currentSegments,
+  status: "completed",
+  progress: currentSegments.length,
+  total: totalSections
+});
 
   } catch (err) {
     console.error("Server error:", err);
@@ -319,8 +511,8 @@ const getAudioSegments = async (req, res) => {
 async function generateAudioInBackground(doi, procJson) {
   try {
     const sectionTexts = Object.values(procJson)
-      .filter((section) => section && section.summary && section.summary.trim().length > 0)
-      .map((section) => section.summary);
+    .map((section) => getSummaryText(section).trim())
+    .filter(Boolean);
 
     if (sectionTexts.length === 0) {
       console.warn("No summaries to generate for DOI:", doi);
@@ -331,7 +523,7 @@ async function generateAudioInBackground(doi, procJson) {
     await generateAndUploadFromJson(sectionTexts, doi);
     console.log(`Completed generation for DOI: ${doi}`);
   } catch (error) {
-    console.error("Background generation error:", error);
+    console.error("Background generation error:", error.response?.data || error.message);
   }
 }
 
@@ -363,7 +555,7 @@ const getAudioStatus = async (req, res) => {
     }
     const totalSections = data.processed_papers_json ?
       Object.values(data.processed_papers_json).filter(section =>
-        section && section.summary && section.summary.trim().length > 0
+        getSummaryText(section).trim().length > 0
       ).length : 0;
 
     const isCompleted = currentSegments.length === totalSections && totalSections > 0;
@@ -441,7 +633,10 @@ const handleDailyFetch = async () => {
     const { data, error } = await axios.get("http://export.arxiv.org/api/query", {
       params: {
         search_query: "all",
-        max_results: 100
+        start: 0,
+        max_results: 100,
+        sortBy: "submittedDate",
+        sortOrder: "descending",
       }
     });
 
@@ -452,9 +647,18 @@ const handleDailyFetch = async () => {
     // }
 
     const jsonData = await xml2js.parseStringPromise(data);
-    const articles = jsonData.feed.entry.slice(0, 2);
+    const articles = jsonData.feed.entry.slice(0, 5);
     // console.log("Articles: ", JSON.stringify(articles, null, 2));
     // return;
+    console.log("First 5 arXiv entries:");
+for (const a of articles) {
+  console.log({
+    id: a.id?.[0],
+    published: a.published?.[0],
+    updated: a.updated?.[0],
+    title: a.title?.[0]?.trim(),
+  });
+}
     if (!articles) {
       console.log("No articles found in the fetched data.");
       return;
@@ -473,18 +677,64 @@ const handleDailyFetch = async () => {
   }
 };
 
-cron.schedule("0 0 * * *", () => {
+
+/**
+ * Checks with supabase to search for missing embedding entries.
+ * @returns a console log to tell if there are any missing embeddings entries
+ */
+async function checkMissingEmbedding(){
+  const { data, error } = await supabase
+    .from('paper')
+    .select('title','doi')
+    .is("paper_embeddings",null)
+    
+  if(error){
+    console.log("Error in fetching: ", error);
+    return;
+  }
+  if(data.length == 0){
+    console.log("THERE ARE MISSING PAPER EMBEDDINGS FOR THESE PAPERS: ", data);
+  } else {
+    console.log("Everything is fine so far.")
+  }
+}
+
+/**
+ * Testing code for seeing if there are missing embeddings or not
+ * To use this code, you need to change the cron schedule to the right time for you to initiate test.
+ * regex: minute hour date month *
+ * example: 15:19 11/March is 19 15 11 3 *
+ * example code:
+ * cron.schedule("0 9 * * 0", () => {
+ *  console.log("Cron job: Fetching and storing daily arXiv articles...");
+ *  handleDailyFetch();
+ * 
+ * What to look for in the console:
+ *  "THERE ARE MISSING PAPER EMBEDDINGS FOR THESE PAPERS: " if missing embeddings
+ *  "Everything is fine so far." : If no missing embeddings
+ */
+cron.schedule("40 12 13 3 *", () => {
   console.log("Cron job: Fetching and storing daily arXiv articles...");
   handleDailyFetch();
+  generateMissingEmbeddings();
+  checkMissingEmbedding();
 });
 
+/**
+ * Run a GET method on the axios api http://export.arxiv.org/api/query
+ * retrieve the latest papers found.
+ * Starting importing at the startIndex value and maxResults papers from there.
+ * @returns data object after using fetch API on axios.
+ */
 async function fetchArxivArticles() {
+  let startIndex = 3;
+  let maxResults=100;
   try {
     const response = await axios.get("http://export.arxiv.org/api/query", {
       params: {
         search_query: "all",
-        start: 0,
-        max_results: 100,
+        start: startIndex,
+        max_results: maxResults,
         sortBy: "submittedDate",
         sortOrder: "descending",
       },
@@ -496,6 +746,7 @@ async function fetchArxivArticles() {
   }
 }
 
+// Call the xml2js parseString promise function
 async function parseArxivResponse(xml) {
   try {
     return await xml2js.parseStringPromise(xml);
@@ -524,20 +775,12 @@ async function insertArticlesIntoSupabase(articles) {
 
     const pdfUrl = article.pdf_url || `https://arxiv.org/pdf/${id[0].split("/").pop()}.pdf`;
 
-    // Convert PDF to LaTeX before inserting
-    let latexContent = null;
-    try {
-      latexContent = await convertPdfToLatex(pdfUrl, id[0]);
-    } catch (error) {
-      // console.error(`❌ LaTeX conversion failed for ${id[0]}`, error);
-    }
-
     // checking if doi is already available on supabase
     const { data: existingPaper, error: existingError } = await supabase
       .from("paper")
       .select("doi")
       .eq("doi", id[0])
-      .single();
+      .maybeSingle();
 
     if (existingError || existingPaper) {
       console.log(`Paper with DOI ${id[0]} already exists in Supabase.`);
@@ -556,7 +799,7 @@ async function insertArticlesIntoSupabase(articles) {
           published_date: published[0],
           categories: categories,
           doi: id[0],
-          latex_content: latexContent || null,
+          latex_content: null,
         },
       ],
     )
@@ -566,14 +809,50 @@ async function insertArticlesIntoSupabase(articles) {
 
     if (error) {
       console.error("Error inserting or updating article in Supabase:", error);
-    } else {
-      console.log(`Upserted article: ${id[0]}`);
     }
-  }
-  sendNewsLetter(articles);
+    if (!error && data && data[0]) {
+    const insertedPaper = data[0];
+
+    try {
+      // Ensure latex_content is present / high quality
+      const latex = await ensureLatexContentForPaper(insertedPaper);
+
+      // Generate processed_papers_json using that latex
+      await generateProcessedPaperJsonForDoi(insertedPaper.doi);
+
+      // (optional) start audio generation in background from processed JSON
+      // const { data: refreshed } = await supabase
+      //   .from("paper")
+      //   .select("doi, processed_papers_json")
+      //   .eq("doi", insertedPaper.doi)
+      //   .single();
+      // if (refreshed?.processed_papers_json) {
+      //   generateAudioInBackground(insertedPaper.doi, refreshed.processed_papers_json)
+      //     .catch(err => console.error("Background audio generation failed:", err));
+      // }
+    } catch (err) {
+      console.error("Post-ingestion processing failed for DOI", insertedPaper.doi, err);
+    }
+  } else {
+        console.log(`Upserted article: ${id[0]}`);
+      }
+    }
+    console.log("reached newsletter");
+      //sendWeeklyPopularPapersNewsletter();
 }
 
-
+/**
+ * Update the timestamp of the like update
+ * Fetch current like count
+ * increment the value of the like and update the table
+ * 
+ * Remove this column "like count" completely from the papers table
+ * To accurately determine this number, perform a group by then count statement
+ * in the likes table instead
+ * @param {*} req 
+ * @param {*} res 
+ * @returns 
+ */
 const updateLike = async (req, res) => {
   try {
     const user_id = req.user?.id || req.body.user_id;
@@ -623,6 +902,22 @@ const updateLike = async (req, res) => {
   }
 };
 
+/**
+ * Algorithm to unlike a post
+ * Process:
+ * 1. Delete the entree of a user's like on the likes table
+ * 2. Fetch the like count column from the papers table
+ * 3. Then decrement it by 1
+ * 4. Update that entree with the new value
+ * 
+ * Suggestion to change: 
+ * Remove this column "like count" completely from the papers table
+ * To accurately determine this number, perform a group by then count statement
+ * in the likes table instead
+ * @param {*} req 
+ * @param {*} res 
+ * @returns 
+ */
 const updateUnlike = async (req, res) => {
   const user_id = req.user?.id || req.body.user_id;
   const paper_id = req.body.paper_id;
@@ -676,6 +971,24 @@ const updateUnlike = async (req, res) => {
   }
 };
 
+/**
+ * Function to insert a new bookmark entree
+ * Process:
+ * 1. Check if user already bookmarked this paper
+ * 2. If yes then exit
+ * 3. If no then insert a new entree for this instance
+ * 4. Update by incrementing the bookmark count on paper table
+ * 
+ * Suggestion:
+ * 1. Since the user's only possible state to trigger this
+ *    is when they did not bookmark it, the initial stage is not
+ *    necessary
+ * 2. Use a count after grouping the paper_id in bookmark table to 
+ *    accurately determine the count rather than relying on the number column
+ * @param {*} req 
+ * @param {*} res 
+ * @returns 
+ */
 const updateBookmark = async (req, res) => {
   try {
     const user_id = req.user?.id || req.body.user_id;
@@ -737,24 +1050,56 @@ const updateBookmark = async (req, res) => {
   }
 };
 
+/**
+ * Function to delete a bookmark entree
+ * Process:
+ * 1. Invoke the delete isntance on the entree that is in the bookmarks table
+ *    the entree to delete: [intended paper_id, current logged in user] 
+ * 2. if there was an issue in the process or no deletion was made, an error log is returned 
+ * 3. Fetch the bookmark_count and decrement it
+ * 4. Update the bookmarl_count for the paper entree 
+ * 
+ * Suggestion:
+ * 1. Use a count after grouping the paper_id in bookmark table to 
+ *    accurately determine the count rather than relying on the number column
+ * @param {*} req 
+ * @param {*} res 
+ * @returns 
+ */
 const updateUnbookmark = async (req, res) => {
   const user_id = req.user?.id || req.body.user_id;
   const paper_id = req.body.paper_id;
 
+  console.log("updateUnbookmark called with:", { user_id, paper_id, hasUser: !!req.user });
+
+  if (!user_id) {
+    return res.status(400).json({ message: "User ID is required" });
+  }
+
+  if (!paper_id) {
+    return res.status(400).json({ message: "Paper ID is required" });
+  }
+
   try {
     // 1. Remove from bookmarks table and get count of deleted rows
-    const { data, error, count } = await supabase
+    const { data, error } = await supabase
       .from("bookmarks")
-      .delete({ count: "exact" })
+      .delete()
       .eq("user_id", user_id)
-      .eq("paper_id", paper_id);
+      .eq("paper_id", paper_id)
+      .select();
 
     if (error) {
+      console.error("Supabase delete error:", error);
       return res
         .status(500)
         .json({ message: "Error unbookmarking paper", error: error.message });
     }
-    if (count === 0) {
+    
+    // Check if any rows were deleted
+    const deletedCount = data ? data.length : 0;
+    if (deletedCount === 0) {
+      console.log("No bookmark found to delete for user_id:", user_id, "paper_id:", paper_id);
       return res.status(404).json({ message: "Bookmark not found" });
     }
 
@@ -785,8 +1130,10 @@ const updateUnbookmark = async (req, res) => {
         .json({ message: "Paper unbookmarked but failed to decrement bookmark_count", error: countError });
     }
 
+    console.log("Bookmark successfully removed, new count:", newBookmarkCount);
     return res.status(200).json({ message: "Paper unbookmarked", data });
   } catch (error) {
+    console.error("updateUnbookmark catch error:", error);
     return res
       .status(500)
       .json({ message: "Error unbookmarking paper", error: error.message });
@@ -815,7 +1162,14 @@ const updateComment = async (req, res) => {
   }
 };
 
-
+/**
+ * I assume that this function is for user manually inserting a new paper into db
+ * Not sure if it was really used anywhere or not.
+ * 
+ * @param {*} req 
+ * @param {*} res 
+ * @returns 
+ */
 async function importPapers(req, res) {
   try {
     const user_id = req?.user?.id;
@@ -856,21 +1210,54 @@ async function importPapers(req, res) {
       return res.status(500).json({ message: "Error fetching papers", papersError });
     }
 
-    // Calculate cosine similarity for each paper
-    const rankedPapers = papers.map((paper) => {
-      const similarityScore = cosineSimilarity(userData.interest_embeddings, paper.paper_embeddings);
+    const maxClicks = Math.max(...(papers ?? []).map((p) => p.click_count || 0), 0);
+    const maxLikes = Math.max(...(papers ?? []).map((p) => p.like_count || 0), 0);
+    const maxBookmarks = Math.max(...(papers ?? []).map((p) => p.bookmark_count || 0), 0);
 
-      const daysSincePublication = Math.floor(
-        (new Date() - new Date(paper.published_date)) / (1000 * 60 * 60 * 24)
-      );
-      const timeBoost = 0.2 * Math.exp(-daysSincePublication / 30);
+    const rankedPapers = (papers ?? [])
+        .map((paper) => {
+          let paperEmb = paper.paper_embeddings;
 
-      return {
-        ...paper,
-        similarity_score: similarityScore,
-        final_score: similarityScore * (1 + timeBoost),
-      };
-    }).sort((a, b) => b.final_score - a.final_score);
+          if (typeof paperEmb === "string") {
+            try {
+              paperEmb = JSON.parse(paperEmb);
+            } catch {
+              return null;
+            }
+          }
+
+          if (!Array.isArray(paperEmb) || paperEmb.length !== userData.interest_embeddings.length) {
+            return null;
+          }
+
+          const similarity = cosineSimilarity(userData.interest_embeddings, paperEmb);
+          // Cosine similarity can be negative so clamp it to [0,1]
+          const similarityScore = clamp01(similarity);
+
+          const clickScore = safeLogNorm(paper.click_count || 0, maxClicks);
+          const likeScore = safeLogNorm(paper.like_count || 0, maxLikes);
+          const bookmarkScore = safeLogNorm(paper.bookmark_count || 0, maxBookmarks);
+          const freshnessScore = getFreshnessScore(paper.published_date);
+
+          const final_score =
+              0.60 * similarityScore +
+              0.15 * clickScore +
+              0.10 * likeScore +
+              0.10 * bookmarkScore +
+              0.05 * freshnessScore;
+
+          return {
+            ...paper,
+            similarity_score: similarity,
+            click_score: clickScore,
+            like_score: likeScore,
+            bookmark_score: bookmarkScore,
+            freshness_score: freshnessScore,
+            final_score,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.final_score - a.final_score);
 
     // Update last paper fetch time
     const { error: updateError } = await supabase
@@ -912,7 +1299,8 @@ async function getPaperForNewsLetter(user_id) {
 
     console.log("Data: ", userData)
     if (userError || !userData?.interest_embeddings) {
-      return res.status(400).json({ message: "Error fetching user data" });
+      console.error("Error fetching user data for newsletter:", userError);
+      return null;
     }
 
     // Fetch paper Embeddings
@@ -930,24 +1318,58 @@ async function getPaperForNewsLetter(user_id) {
     const { data: papers, error: papersError } = await query;
 
     if (papersError) {
-      return res.status(500).json({ message: "Error fetching papers", papersError });
+      console.error("Error fetching papers for newsletter:", papersError);
+      return null;
     }
 
-    // Calculate cosine similarity for each paper
-    const rankedPapers = papers.map((paper) => {
-      const similarityScore = cosineSimilarity(userData.interest_embeddings, paper.paper_embeddings);
+    const maxClicks = Math.max(...(papers ?? []).map((p) => p.click_count || 0), 0);
+    const maxLikes = Math.max(...(papers ?? []).map((p) => p.like_count || 0), 0);
+    const maxBookmarks = Math.max(...(papers ?? []).map((p) => p.bookmark_count || 0), 0);
 
-      const daysSincePublication = Math.floor(
-        (new Date() - new Date(paper.published_date)) / (1000 * 60 * 60 * 24)
-      );
-      const timeBoost = 0.2 * Math.exp(-daysSincePublication / 30);
+    const rankedPapers = (papers ?? [])
+        .map((paper) => {
+          let paperEmb = paper.paper_embeddings;
 
-      return {
-        ...paper,
-        similarity_score: similarityScore,
-        final_score: similarityScore * (1 + timeBoost),
-      };
-    }).sort((a, b) => b.final_score - a.final_score);
+          if (typeof paperEmb === "string") {
+            try {
+              paperEmb = JSON.parse(paperEmb);
+            } catch {
+              return null;
+            }
+          }
+
+          if (!Array.isArray(paperEmb) || paperEmb.length !== userData.interest_embeddings.length) {
+            return null;
+          }
+
+          const similarity = cosineSimilarity(userData.interest_embeddings, paperEmb);
+          // Cosine similarity can be negative so clamp it to [0,1]
+          const similarityScore = clamp01(similarity);
+
+          const clickScore = safeLogNorm(paper.click_count || 0, maxClicks);
+          const likeScore = safeLogNorm(paper.like_count || 0, maxLikes);
+          const bookmarkScore = safeLogNorm(paper.bookmark_count || 0, maxBookmarks);
+          const freshnessScore = getFreshnessScore(paper.published_date);
+
+          const final_score =
+              0.60 * similarityScore +
+              0.15 * clickScore +
+              0.10 * likeScore +
+              0.10 * bookmarkScore +
+              0.05 * freshnessScore;
+
+          return {
+            ...paper,
+            similarity_score: similarity,
+            click_score: clickScore,
+            like_score: likeScore,
+            bookmark_score: bookmarkScore,
+            freshness_score: freshnessScore,
+            final_score,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.final_score - a.final_score);
 
     // Update last paper fetch time
     const { error: updateError } = await supabase
@@ -962,10 +1384,16 @@ async function getPaperForNewsLetter(user_id) {
     // return the response
     return rankedPapers[0];
   } catch (error) {
-    res.status(500).json({ message: "Unexpected error", error: error.message });
+    console.error("Error in getPaperForNewsLetter:", error);
+    return null;
   }
 }
-
+/**
+ * Helper function to retrieve specific paper from database by id
+ * @param {*} req 
+ * @param {*} res 
+ * @returns 
+ */
 const getPaperById = async (req, res) => {
   console.log("hitted paperById")
   const { id } = req.params;
@@ -1011,52 +1439,65 @@ async function generateEmbedding(text) {
 }
 
 const generateEmbeddingForUserInterest = async (user_id) => {
+  console.log("Starting to generate missing embeddings for interest..", user_id);
 
-  console.log("Starting to generate missing embeddings for interest..");
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, user_interest, interest_embeddings")
-    .eq("id", user_id);
+  const {data: userRow, error} = await supabase
+      .from("users")
+      .select("id, user_interest")
+      .eq("id", user_id)
+      .single();
 
-
-  data.forEach(async d => {
-
-    const interest = JSON.parse(d.user_interest);
-    let interestInPlainText = "";
-    const embeddings = [];
-    interest.forEach(async (interest) => {
-      const embedding = await generateEmbedding(interest);
-      embeddings.push(embedding);
-
-    });
-    if (embeddings.length > 0) {
-      const embeddingSize = embeddings[0].length;
-      const averageEmbedding = Array(embeddingSize).fill(0);
-      embeddings.forEach(embedding => {
-        for (let i = 0; i < embeddingSize; i++) {
-          averageEmbedding[i] += embedding[i];
-        }
-      })
-      for (let i = 0; i < embeddingSize; i++) {
-        averageEmbedding[i] /= embeddings.length;
-      }
-
-      const response = await supabase
-        .from("users")
-        .update({ interest_embeddings: averageEmbedding })
-        .eq("id", d.id);
-      console.log("response: ", response);
-    }
-  }
-  );
   if (error) {
-    console.log("error while fetching user Data: ", error);
-    return null;
-  } else {
-    return true;
+    console.error("Error fetching user:", error);
+    return false;
   }
 
-}
+  if (!userRow?.user_interest) {
+    console.log("No user_interest found for user:", user_id);
+    return false;
+  }
+
+  let interests;
+  try {
+    interests = JSON.parse(userRow.user_interest);
+  } catch (e) {
+    console.error("user_interest is not valid JSON:", e);
+    return false;
+  }
+
+  if (!Array.isArray(interests) || interests.length === 0) {
+    console.log("No interest found for user:", user_id);
+    return false;
+  }
+
+  // generates all embeddings in parallel
+  const embeddings = await Promise.all(
+      interests.map((i) => generateEmbedding(String(i)))
+  );
+
+  // avg embeddings
+  const embeddingSize = embeddings[0].length;
+  const avg = Array(embeddingSize).fill(0);
+
+  for (const emb of embeddings) {
+    for (let i = 0; i < embeddingSize; i++) avg[i] += emb[i];
+  }
+  for (let i = 0; i < embeddingSize; i++) avg[i] /= embeddings.length;
+
+  const {error: updateErr} = await supabase
+      .from("users")
+      .update({interest_embeddings: avg})
+      .eq("id", user_id);
+
+  if (updateErr) {
+    console.error("Failed to update interest_embeddings:", updateErr);
+    return false;
+  }
+
+  console.log("Updated interest_embeddings for user:", user_id);
+  return true;
+};
+
 const generateEmbeddingWhileSignUp = async (interestsArray, user_id) => {
 
   console.log("Starting to generate userInterest embeddings while signup", interestsArray);
@@ -1108,6 +1549,23 @@ function cosineSimilarity(vecA, vecB) {
   const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
 
   return magnitudeA && magnitudeB ? dotProduct / (magnitudeA * magnitudeB) : 0;
+}
+
+function safeLogNorm(value, maxValue) {
+  if(!maxValue || maxValue <= 0) return 0;
+  return Math.log1p(value || 0) / Math.log1p(maxValue);
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function getFreshnessScore(publishedDate) {
+  if (!publishedDate) return 0;
+  const daysSincePublication = Math.floor(
+      (new Date() - new Date(publishedDate)) / (1000 * 60 * 60 * 24)
+  );
+  return Math.exp(-daysSincePublication / 90);
 }
 
 async function generateMissingEmbeddings(req, res) {
@@ -1262,6 +1720,8 @@ const fetchPapersByClickCount = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
+
 
 
 // updatePaperCategory();
@@ -1572,56 +2032,511 @@ const fetchBookmarks = async (req, res) => {
   }
 };
 
-
-const fetchLikes = async (req, res) => {
+const fetchRecommendations = async (req, res) => {
   const user_id = req?.user?.id;
-  if (!user_id) {
-    console.error("User ID is missing");
-    return res.status(400).json({ error: "Follower ID is required" });
-  }
+  if (!user_id) return res.status(400).json({ message: "Missing required fields" });
 
   try {
-    const { data, error } = await supabase
-      .from('likes')
-      .select(`
-                paper_id,
-                timestamp,
-                paper (
-                    title,
-                    author_names,
-                    published_date,
-                    doi,
-                    summary,
-                    pdf_url,
-                    categories
-                )
-            `)
-      .eq('user_id', user_id);
+    // Get user interest embeddings
+    const { data: user, error: userErr } = await supabase
+        .from("users")
+        .select("interest_embeddings")
+        .eq("id", user_id)
+        .single();
 
-    if (error) {
-      console.error('Error fetching likes:', error);
-      return res.status(500).json({ message: 'Error fetching likes', error });
+    if (userErr) throw userErr;
+
+    let userEmb = user?.interest_embeddings;
+
+    // If it's stored as JSON string then parse it
+    if (typeof userEmb === "string") {
+      try { userEmb = JSON.parse(userEmb); } catch { userEmb = null; }
     }
 
-    // Format the response to include paper details
-    const formattedLikes = data.map(like => ({
-      paper_id: like.paper_id,
-      timestamp: like.timestamp,
-      title: like.paper?.title,
-      author_names: like.paper?.author_names,
-      published_date: like.paper?.published_date,
-      doi: like.paper?.doi,
-      summary: like.paper?.summary,
-      pdf_url: like.paper?.pdf_url,
-      categories: like.paper?.categories,
-      category_readable: getFullCategoryName(like.paper?.categories)
+    // If user has no embeddings then return popular papers
+    if (!Array.isArray(userEmb) || userEmb.length === 0) {
+      const { data, error } = await supabase
+          .from("paper")
+          .select("paper_id, title, author_names, published_date, doi, summary, pdf_url, categories, click_count, like_count, bookmark_count")
+          .order("click_count", { ascending: false, nullsFirst: false })
+          .limit(10);
+
+      if (error) throw error;
+
+      // match the bookmark response shape
+      const formatted = (data ?? []).map(p => ({
+        paper_id: p.paper_id,
+        title: p.title,
+        author_names: p.author_names,
+        published_date: p.published_date,
+        doi: p.doi,
+        summary: p.summary,
+        pdf_url: p.pdf_url,
+        categories: p.categories,
+        category_readable: getFullCategoryName(p.categories),
+        click_count: p.click_count,
+        like_count: p.like_count || 0,
+        bookmark_count: p.bookmark_count || 0
+      }));
+
+      return res.status(200).json({
+        message: "User embedding missing, returned popular papers",
+        data: formatted
+      });
+    }
+
+    // Fetch candidate papers with embeddings
+    const { data: papers, error: paperErr } = await supabase
+        .from("paper")
+        .select("paper_id, title, author_names, published_date, doi, summary, pdf_url, categories, click_count, like_count, bookmark_count, paper_embeddings")
+        .not("paper_embeddings", "is", null)
+        .order("published_date", { ascending: false })
+        .limit(300);
+
+    if (paperErr) throw paperErr;
+
+    // Score and rank
+    const maxClicks = Math.max(...(papers ?? []).map((p) => p.click_count || 0), 0);
+    const maxLikes = Math.max(...(papers ?? []).map((p) => p.like_count || 0), 0);
+    const maxBookmarks = Math.max(...(papers ?? []).map((p) => p.bookmark_count || 0), 0);
+
+    const scored = (papers ?? [])
+        .map((p) => {
+          let paperEmb = p.paper_embeddings;
+
+          if (typeof paperEmb === "string") {
+            try {
+              paperEmb = JSON.parse(paperEmb);
+            } catch {
+              return null;
+            }
+          }
+
+          if (!Array.isArray(paperEmb) || paperEmb.length !== userEmb.length) {
+            return null;
+          }
+
+          const similarity = cosineSimilarity(userEmb, paperEmb);
+          // Cosine similarity can be negative so clamp it to [0,1]
+          const similarityScore = clamp01(similarity);
+
+          const clickScore = safeLogNorm(p.click_count || 0, maxClicks);
+          const likeScore = safeLogNorm(p.like_count || 0, maxLikes);
+          const bookmarkScore = safeLogNorm(p.bookmark_count || 0, maxBookmarks);
+          const freshnessScore = getFreshnessScore(p.published_date);
+
+          // Weighted final score
+          const final_score =
+              0.60 * similarityScore +
+              0.15 * clickScore +
+              0.10 * likeScore +
+              0.10 * bookmarkScore +
+              0.05 * freshnessScore;
+
+          return {
+            ...p,
+            similarity_score: similarity,
+            click_score: clickScore,
+            like_score: likeScore,
+            bookmark_score: bookmarkScore,
+            freshness_score: freshnessScore,
+            final_score,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.final_score - a.final_score)
+        .slice(0, 10);
+
+    // Format response
+    const formatted = (scored ?? []).map(p => ({
+      paper_id: p.paper_id,
+      title: p.title,
+      author_names: p.author_names,
+      published_date: p.published_date,
+      doi: p.doi,
+      summary: p.summary,
+      pdf_url: p.pdf_url,
+      categories: p.categories,
+      category_readable: getFullCategoryName(p.categories),
+      click_count: p.click_count || 0,
+      like_count: p.like_count || 0,
+      bookmark_count: p.bookmark_count || 0,
+      similarity_score: p.similarity_score,
+      click_score: p.click_score,
+      like_score: p.like_score,
+      bookmark_score: p.bookmark_score,
+      freshness_score: p.freshness_score,
+      final_score: p.final_score
     }));
 
-    res.status(200).json({ message: 'Likes fetched successfully', data: formattedLikes });
-  } catch (error) {
-    console.error('Error in fetchLikes:', error);
-    res.status(500).json({ message: 'Unexpected error occurred', error });
+    res.status(200).json({ message: 'Recommendations fetched successfully', data: formatted });
+
+  } catch (err) {
+    console.error('fetchRecommendations:', err);
+    res.status(500).json({ message: 'Unexpected error occurred' });
   }
+};
+
+const fetchExploreRecommendations = async (req, res) => {
+  const user_id = req?.user?.id;
+  if (!user_id) return res.status(400).json({ message: "Missing required fields" });
+
+  //If the user has an offset in the query request, use pagination
+  if(req.query.offset){
+    try {
+      const PAPER_RANGE_OFFSET = 21;
+      const offset = Number(req.query.offset) || 0;
+      const limit = Number(req.query.limit) || PAPER_RANGE_OFFSET;
+      const { data: user, error: userErr } = await supabase
+          .from("users")
+          .select("interest_embeddings")
+          .eq("id", user_id)
+          .single();
+
+      if (userErr) throw userErr;
+
+      let userEmb = user?.interest_embeddings;
+
+      if (typeof userEmb === "string") {
+        try {
+          userEmb = JSON.parse(userEmb);
+        } catch {
+          userEmb = null;
+        }
+      }
+
+      if (!Array.isArray(userEmb) || userEmb.length === 0) {
+        const { data, error } = await supabase
+            .from("paper")
+            .select("paper_id, title, author_names, published_date, doi, summary, pdf_url, categories, click_count, like_count, bookmark_count")
+            .order("click_count", { ascending: false, nullsFirst: false });
+
+        if (error) throw error;
+
+        const formatted = (data ?? []).map((p) => ({
+          paper_id: p.paper_id,
+          title: p.title,
+          author_names: p.author_names,
+          published_date: p.published_date,
+          doi: p.doi,
+          summary: p.summary,
+          pdf_url: p.pdf_url,
+          categories: p.categories,
+          category_readable: getFullCategoryName(p.categories),
+          click_count: p.click_count || 0,
+          like_count: p.like_count || 0,
+          bookmark_count: p.bookmark_count || 0
+        }));
+
+        return res.status(200).json({
+          message: "User embedding missing, returned explore papers",
+          data: formatted
+        });
+      }
+
+      const { data: papers, error: paperErr } = await supabase
+          .from("paper")
+          .select("paper_id, title, author_names, published_date, doi, summary, pdf_url, categories, click_count, like_count, bookmark_count, paper_embeddings")
+          .not("paper_embeddings", "is", null)
+          .order("published_date", { ascending: false })
+          .range(offset, offset + limit - 1);
+
+      if (paperErr) throw paperErr;
+
+      const maxClicks = Math.max(...(papers ?? []).map((p) => p.click_count || 0), 0);
+      const maxLikes = Math.max(...(papers ?? []).map((p) => p.like_count || 0), 0);
+      const maxBookmarks = Math.max(...(papers ?? []).map((p) => p.bookmark_count || 0), 0);
+
+      const scored = (papers ?? [])
+          .map((p) => {
+            let paperEmb = p.paper_embeddings;
+
+            if (typeof paperEmb === "string") {
+              try {
+                paperEmb = JSON.parse(paperEmb);
+              } catch {
+                return null;
+              }
+            }
+
+            if (!Array.isArray(paperEmb) || paperEmb.length !== userEmb.length) {
+              return null;
+            }
+
+            const similarity = cosineSimilarity(userEmb, paperEmb);
+            const similarityScore = clamp01(similarity);
+            const clickScore = safeLogNorm(p.click_count || 0, maxClicks);
+            const likeScore = safeLogNorm(p.like_count || 0, maxLikes);
+            const bookmarkScore = safeLogNorm(p.bookmark_count || 0, maxBookmarks);
+            const freshnessScore = getFreshnessScore(p.published_date);
+
+            const final_score =
+                0.60 * similarityScore +
+                0.15 * clickScore +
+                0.10 * likeScore +
+                0.10 * bookmarkScore +
+                0.05 * freshnessScore;
+
+            return {
+              ...p,
+              similarity_score: similarity,
+              click_score: clickScore,
+              like_score: likeScore,
+              bookmark_score: bookmarkScore,
+              freshness_score: freshnessScore,
+              final_score,
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.final_score - a.final_score);
+
+      const formatted = (scored ?? []).map((p) => ({
+        paper_id: p.paper_id,
+        title: p.title,
+        author_names: p.author_names,
+        published_date: p.published_date,
+        doi: p.doi,
+        summary: p.summary,
+        pdf_url: p.pdf_url,
+        categories: p.categories,
+        category_readable: getFullCategoryName(p.categories),
+        click_count: p.click_count || 0,
+        like_count: p.like_count || 0,
+        bookmark_count: p.bookmark_count || 0,
+        similarity_score: p.similarity_score,
+        click_score: p.click_score,
+        like_score: p.like_score,
+        bookmark_score: p.bookmark_score,
+        freshness_score: p.freshness_score,
+        final_score: p.final_score
+      }));
+
+      res.status(200).json({
+        message: "Explore recommendations fetched successfully",
+        data: formatted
+      });
+    } catch (err) {
+      console.error("fetchExploreRecommendations:", err);
+      res.status(500).json({ message: "Unexpected error occurred" });
+    }
+  }
+  else{
+      try {
+        const { data: user, error: userErr } = await supabase
+            .from("users")
+            .select("interest_embeddings")
+            .eq("id", user_id)
+            .single();
+
+        if (userErr) throw userErr;
+
+        let userEmb = user?.interest_embeddings;
+
+        if (typeof userEmb === "string") {
+          try {
+            userEmb = JSON.parse(userEmb);
+          } catch {
+            userEmb = null;
+          }
+        }
+
+        if (!Array.isArray(userEmb) || userEmb.length === 0) {
+          const { data, error } = await supabase
+              .from("paper")
+              .select("paper_id, title, author_names, published_date, doi, summary, pdf_url, categories, click_count, like_count, bookmark_count")
+              .order("click_count", { ascending: false, nullsFirst: false });
+
+          if (error) throw error;
+
+          const formatted = (data ?? []).map((p) => ({
+            paper_id: p.paper_id,
+            title: p.title,
+            author_names: p.author_names,
+            published_date: p.published_date,
+            doi: p.doi,
+            summary: p.summary,
+            pdf_url: p.pdf_url,
+            categories: p.categories,
+            category_readable: getFullCategoryName(p.categories),
+            click_count: p.click_count || 0,
+            like_count: p.like_count || 0,
+            bookmark_count: p.bookmark_count || 0
+          }));
+
+          return res.status(200).json({
+            message: "User embedding missing, returned explore papers",
+            data: formatted
+          });
+        }
+
+        const { data: papers, error: paperErr } = await supabase
+            .from("paper")
+            .select("paper_id, title, author_names, published_date, doi, summary, pdf_url, categories, click_count, like_count, bookmark_count, paper_embeddings")
+            .not("paper_embeddings", "is", null)
+            .order("published_date", { ascending: false });
+
+        if (paperErr) throw paperErr;
+
+        const maxClicks = Math.max(...(papers ?? []).map((p) => p.click_count || 0), 0);
+        const maxLikes = Math.max(...(papers ?? []).map((p) => p.like_count || 0), 0);
+        const maxBookmarks = Math.max(...(papers ?? []).map((p) => p.bookmark_count || 0), 0);
+
+        const scored = (papers ?? [])
+            .map((p) => {
+              let paperEmb = p.paper_embeddings;
+
+              if (typeof paperEmb === "string") {
+                try {
+                  paperEmb = JSON.parse(paperEmb);
+                } catch {
+                  return null;
+                }
+              }
+
+              if (!Array.isArray(paperEmb) || paperEmb.length !== userEmb.length) {
+                return null;
+              }
+
+              const similarity = cosineSimilarity(userEmb, paperEmb);
+              const similarityScore = clamp01(similarity);
+              const clickScore = safeLogNorm(p.click_count || 0, maxClicks);
+              const likeScore = safeLogNorm(p.like_count || 0, maxLikes);
+              const bookmarkScore = safeLogNorm(p.bookmark_count || 0, maxBookmarks);
+              const freshnessScore = getFreshnessScore(p.published_date);
+
+              const final_score =
+                  0.60 * similarityScore +
+                  0.15 * clickScore +
+                  0.10 * likeScore +
+                  0.10 * bookmarkScore +
+                  0.05 * freshnessScore;
+
+              return {
+                ...p,
+                similarity_score: similarity,
+                click_score: clickScore,
+                like_score: likeScore,
+                bookmark_score: bookmarkScore,
+                freshness_score: freshnessScore,
+                final_score,
+              };
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.final_score - a.final_score);
+
+        const formatted = (scored ?? []).map((p) => ({
+          paper_id: p.paper_id,
+          title: p.title,
+          author_names: p.author_names,
+          published_date: p.published_date,
+          doi: p.doi,
+          summary: p.summary,
+          pdf_url: p.pdf_url,
+          categories: p.categories,
+          category_readable: getFullCategoryName(p.categories),
+          click_count: p.click_count || 0,
+          like_count: p.like_count || 0,
+          bookmark_count: p.bookmark_count || 0,
+          similarity_score: p.similarity_score,
+          click_score: p.click_score,
+          like_score: p.like_score,
+          bookmark_score: p.bookmark_score,
+          freshness_score: p.freshness_score,
+          final_score: p.final_score
+        }));
+
+        res.status(200).json({
+          message: "Explore recommendations fetched successfully",
+          data: formatted
+        });
+      } catch (err) {
+        console.error("fetchExploreRecommendations:", err);
+        res.status(500).json({ message: "Unexpected error occurred" });
+      }
+    }
+  };
+
+  const fetchPapersByClickCountByLimit = async (req, res) => {
+    try {
+      const PAPER_RANGE_OFFSET = 21;
+      const offset = Number(req.query.offset) || 0;
+      const limit = Number(req.query.limit) || PAPER_RANGE_OFFSET;
+
+      const { data, error } = await supabase
+        .from('paper')
+        .select('paper_id, title, author_names, published_date, categories, doi, summary, like_count, bookmark_count')
+        .order('click_count', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (error) {
+        console.error('Error fetching papers:', error);
+        return res.status(500).json({ error: "Failed to fetch papers" });
+      }
+
+      const papersWithReadableCategory = data.map((paper) => ({
+        ...paper,
+        category_readable: getFullCategoryName(paper.categories),
+        like_count: paper.like_count || 0,
+        bookmark_count: paper.bookmark_count || 0
+      }));
+
+      res.status(200).json({ data: papersWithReadableCategory });
+
+    } catch (error) {
+      console.error('Server error:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  };
+
+  const fetchLikes = async (req, res) => {
+    const user_id = req?.user?.id;
+    if (!user_id) {
+      console.error("User ID is missing");
+      return res.status(400).json({ error: "Follower ID is required" });
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('likes')
+        .select(`
+                  paper_id,
+                  timestamp,
+                  paper (
+                      title,
+                      author_names,
+                      published_date,
+                      doi,
+                      summary,
+                      pdf_url,
+                      categories
+                  )
+              `)
+        .eq('user_id', user_id);
+
+      if (error) {
+        console.error('Error fetching likes:', error);
+        return res.status(500).json({ message: 'Error fetching likes', error });
+      }
+
+      // Format the response to include paper details
+      const formattedLikes = data.map(like => ({
+        paper_id: like.paper_id,
+        timestamp: like.timestamp,
+        title: like.paper?.title,
+        author_names: like.paper?.author_names,
+        published_date: like.paper?.published_date,
+        doi: like.paper?.doi,
+        summary: like.paper?.summary,
+        pdf_url: like.paper?.pdf_url,
+        categories: like.paper?.categories,
+        category_readable: getFullCategoryName(like.paper?.categories)
+      }));
+
+      res.status(200).json({ message: 'Likes fetched successfully', data: formattedLikes });
+    } catch (error) {
+      console.error('Error in fetchLikes:', error);
+      res.status(500).json({ message: 'Unexpected error occurred', error });
+    }
 };
 
 const fetchComments = async (req, res) => {
@@ -2081,9 +2996,17 @@ Read the full paper: ${paper.pdf_url || '#'}
     </div>
   `).join('');
 
+  const appButtonHtml = `
+      <div style="text-align: center; margin-top: 40px; margin-bottom: 40px;">
+        <a href="http://localhost:8081/recommendations" target="_blank" style="display: inline-block; background: #2ecc71; color: #ffffff; padding: 15px 30px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 18px; box-shadow: 0 4px 10px rgba(46, 204, 113, 0.3);">
+          Open App
+        </a>
+      </div>
+    `;
+
   const msg = {
     to: user.email,
-    from: "TicTecToef24@gmail.com",
+    from: "tictectoew26@gmail.com",
     subject: `Top 10 Most Popular Research Papers This Week!`,
     text: `Hello ${user.name || user.username},\n\nHere are the top 10 most popular research papers from this week:\n\n${papersText}\nBest regards,\nThe TicTecToef24 Team`,
     html: `
@@ -2092,6 +3015,7 @@ Read the full paper: ${paper.pdf_url || '#'}
         <p style="color: #7f8c8d; text-align: center; margin-top: 0;">Hello ${user.name || user.username}!</p>
         <p style="color: #34495e; text-align: center;">Here are the <strong>top 10 most popular research papers</strong> from this week:</p>
         <div style="margin-top: 32px;">${papersHtml}</div>
+        ${appButtonHtml}
         <div style="text-align: center; margin-top: 40px; padding: 20px; background-color: #ecf0f1; border-radius: 8px;">
           <p style="margin: 0; color: #7f8c8d;">Best regards,<br/>The TicTecToef24 Team</p>
         </div>
@@ -2183,6 +3107,261 @@ const updateExistingPapersWithCategories = async () => {
 //   await insertArticlesIntoSupabase(testArticles);
 // })();
 
+/**
+ * Fetches the TTS transcript (processed paper JSON) for a given DOI
+ * Returns structured sections for displaying collapsible transcript
+ * @param {String} doi - The DOI of the paper
+ * @returns {Object} - Transcript sections with metadata
+ */
+const extractSectionTitlesFromLatex = (latexContent) => {
+  if (!latexContent || typeof latexContent !== "string") return [];
+
+  const titles = [];
+  const seen = new Set();
+
+  const addTitle = (rawTitle) => {
+    if (!rawTitle) return;
+
+    const cleanedTitle = rawTitle
+      .replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])?(\{[^}]*\})?/g, "")
+      .replace(/[{}]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!cleanedTitle) return;
+
+    const normalized = cleanedTitle.toLowerCase();
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      titles.push(cleanedTitle);
+    }
+  };
+
+  // 1. Try true LaTeX section headings
+  const latexPatterns = [
+    /\\section\*?\{([^}]+)\}/g,
+    /\\subsection\*?\{([^}]+)\}/g,
+  ];
+
+  for (const pattern of latexPatterns) {
+    let match;
+    while ((match = pattern.exec(latexContent)) !== null) {
+      addTitle(match[1]);
+    }
+  }
+
+  // 2. Fallback: detect plain-text headings from extracted PDF text
+  if (titles.length === 0) {
+    const lines = latexContent.split("\n");
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      if (!trimmed) continue;
+      if (trimmed.length > 100) continue;
+      if (/^\d+$/.test(trimmed)) continue;
+
+      const numberedMatch = trimmed.match(
+        /^(?:\d+\.?\s*)?(abstract|introduction|background|related work|literature review|methods?|methodology|approach|experiments?|experimental setup|results?|discussion|conclusion|conclusions|future work|references)$/i
+      );
+
+      if (numberedMatch) {
+        addTitle(numberedMatch[1]);
+      }
+    }
+  }
+
+  return titles;
+};
+const isBadSectionTitle = (title) => {
+  const normalized = String(title || "").trim().toLowerCase();
+
+  if (!normalized) return true;
+
+  const exactBadTitles = new Set([
+    "argument",
+    "startsection section",
+    "ifstar ieeeappendixsavesection",
+  ]);
+
+  if (exactBadTitles.has(normalized)) return true;
+
+  const badPatterns = [
+    /appendixsave/i,
+    /^ifstar/i,
+    /^startsection/i,
+    /^subsection/i,
+    /^section$/i,
+    /^my appendix title$/i,
+  ];
+
+  return badPatterns.some((pattern) => pattern.test(normalized));
+};
+const isGarbageTranscriptSection = (key, value) => {
+  const rawTitle = String(value?.title || key || "").trim().toLowerCase();
+  const summary = String(value?.summary || "").trim().toLowerCase();
+
+  if (!summary) return true;
+
+  // obvious junk title
+  if (rawTitle === "startsection section") return true;
+
+  // obvious LaTeX / style-file garbage
+  const garbageMarkers = [
+    "startsection",
+    "secfont",
+    "subsecfont",
+    "subsubsecfont",
+    "raggedright",
+    "rightskip",
+    "flushglue",
+    "adddotafter",
+    "proofindent",
+    "acmplain",
+    "acmdefinition",
+    "sigconf",
+    "siggraph",
+    "sigplan",
+    "sigchi",
+    "acmtog",
+    "pbalance",
+  ];
+
+  const garbageHits = garbageMarkers.filter((marker) => summary.includes(marker)).length;
+
+  if (garbageHits >= 3) return true;
+
+  return false;
+};
+const getTtsTranscript = async (req, res) => {
+  const { doi } = req.params;
+
+  if (!doi) {
+    return res.status(400).json({ error: "DOI is required" });
+  }
+
+  try {
+    const decodedDoi = decodeURIComponent(doi);
+
+    const { data: paper, error } = await supabase
+      .from("paper")
+      .select("title, author_names, processed_papers_json, latex_content")
+      .eq("doi", decodedDoi)
+      .single();
+
+    if (error || !paper) {
+      console.error("Error fetching paper:", error);
+      return res.status(404).json({ error: "Paper not found for this DOI" });
+    }
+
+    const latexSectionTitles = extractSectionTitlesFromLatex(paper.latex_content);
+    console.log("latexSectionTitles:", latexSectionTitles);
+
+    const getRealSectionTitle = (rawTitle, index) => {
+  console.log("rawTitle:", rawTitle, "index:", index);
+
+  if (!rawTitle) {
+    return latexSectionTitles[index] || `Section ${index + 1}`;
+  }
+
+  const normalized = String(rawTitle).trim();
+
+  if (!normalized) {
+    return latexSectionTitles[index] || `Section ${index + 1}`;
+  }
+
+  if (normalized.toLowerCase() === "abstract") {
+    return "Abstract";
+  }
+
+  
+
+  const match = normalized.match(/^section[_-]?(\d+)$/i);
+  if (match) {
+    const latexIndex = parseInt(match[1], 10) - 1;
+    return latexSectionTitles[latexIndex] || `Section ${match[1]}`;
+  }
+
+  return normalized
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+    let sections = [];
+
+    if (paper.processed_papers_json) {
+      if (Array.isArray(paper.processed_papers_json)) {
+       sections = paper.processed_papers_json
+  .filter((section, index) => {
+    const summaryText =
+      typeof section?.summary === "string"
+        ? section.summary
+        : section?.summary?.summary || "";
+
+    const resolvedTitle = getRealSectionTitle(section?.title, index);
+
+    return summaryText.trim().length > 0 && !isBadSectionTitle(resolvedTitle);
+  })
+  .map((section, index) => ({
+    id: section.order ?? index,
+    order: section.order ?? index,
+    title: getRealSectionTitle(section.title, index),
+    summary:
+      typeof section.summary === "string"
+        ? section.summary
+        : section?.summary?.summary || "",
+    expanded: false,
+  }));
+      } else if (typeof paper.processed_papers_json === "object") {
+  sections = Object.entries(paper.processed_papers_json)
+  .filter(([key, value], index) => {
+    const summaryText =
+      typeof value?.summary === "string"
+        ? value.summary
+        : value?.summary?.summary || "";
+
+    const resolvedTitle = getRealSectionTitle(value?.title || key, index);
+
+    if (!summaryText.trim()) return false;
+    if (isGarbageTranscriptSection(key, { ...value, summary: summaryText })) return false;
+    if (isBadSectionTitle(resolvedTitle)) return false;
+
+    return true;
+  })
+  .map(([key, value], index) => {
+    const summaryText =
+      typeof value?.summary === "string"
+        ? value.summary
+        : value?.summary?.summary || "";
+
+    return {
+      id: index,
+      order: index,
+      title: getRealSectionTitle(value.title || key, index),
+      summary: summaryText,
+      expanded: false,
+    };
+  });
+    }
+  }
+
+    return res.status(200).json({
+      doi: decodedDoi,
+      title: paper.title,
+      author: paper.author_names,
+      totalSections: sections.length,
+      sections,
+      hasContent: sections.length > 0,
+    });
+  } catch (err) {
+    console.error("Error fetching TTS transcript:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+  
+};
+
 module.exports = {
   updateLike,
   updateUnlike,
@@ -2204,18 +3383,26 @@ module.exports = {
   insertArticlesIntoSupabase,
   handleDailyFetch,
   parseArxivResponse,
+  convertPdfToLatex,
   fetchBookmarks,
   fetchComments,
   fetchLikes,
   fetchInterests,
   fetchCategories,
+  fetchExploreRecommendations,
+  fetchRecommendations,
   getAudioSegments,
+  extractPlainTextFromPdf,
   streamAudioSegment,
   incrementPaperClick,
+  generateProcessedPaperJsonForDoi,
   generateEmbeddingForUserInterest,
   generateEmbeddingWhileSignUp,
   fetchPapersByClickCount,
+  fetchPapersByClickCountByLimit,
   updateExistingPapersWithCategories,
-  sendWeeklyPopularPapersNewsletter
+  executeCommand,
+  sendWeeklyPopularPapersNewsletter,
+  getTtsTranscript
 }
 //updateExistingPapersWithCategories();

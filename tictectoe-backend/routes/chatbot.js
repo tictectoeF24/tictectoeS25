@@ -6,7 +6,9 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Validate payload and log requests
 router.post('/', async (req, res) => {
-  const { question, context, model = "gemini-2.5-flash", config = {} } = req.body;
+  const { question, context, config = {} } = req.body;
+  console.log(`[Gemini Chatbot] Config:`, config);
+
   if (!question || typeof question !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid "question" field.' });
   }
@@ -27,7 +29,7 @@ router.post('/', async (req, res) => {
       ? `Context: ${context}\n\nQuestion: ${question}\n\nPlease answer the question based on the provided context.`
       : `Question: ${question}\n\nPlease provide a helpful answer to this question.`;
     
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
     
     // Retry logic for handling overloaded model
     let retryCount = 0;

@@ -20,7 +20,7 @@ const ListenPageTools = () => {
             stopPlaying();
         } else {
             startPlaying(playbackSpeed);
-        };
+        }
         setIsPlaying((prevState) => !prevState);
 
     };

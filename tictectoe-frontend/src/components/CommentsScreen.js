@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, ScrollView, Text, StyleSheet, TouchableOpacity, Switch } from "react-native";
+import { View, ScrollView, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { fetchComments } from "../../api";
 import { checkIfGobackInfoAvailable } from "./functions/routeGoBackHandler";
@@ -80,21 +80,21 @@ const SimplePaperListItem = ({ item, navigation, isDarkMode }) => {
   };
 
   return (
-    <TouchableOpacity style={styles.paperItem} onPress={handlePaperClick}>
-      <Text style={styles.title}>{item.title}</Text>
-      <Text style={styles.author}>{item.author_names}</Text>
-      <Text style={styles.date}>
-        {new Date(item.published_date).toLocaleDateString()}
-      </Text>
-      <View style={styles.commentContainer}>
-        {item.comments.map((comment, index) => (
-          <View key={index}>
-            <Text style={styles.commentText}>{comment.content}</Text>
-            <Text style={styles.commentTime}>{formatTimestamp(comment.timestamp)}</Text>
-          </View>
-        ))}
-      </View>
-    </TouchableOpacity>
+      <TouchableOpacity style={styles.paperItem} onPress={handlePaperClick}>
+        <Text style={styles.title}>{item.title}</Text>
+        <Text style={styles.author}>{item.author_names}</Text>
+        <Text style={styles.date}>
+          {new Date(item.published_date).toLocaleDateString()}
+        </Text>
+        <View style={styles.commentContainer}>
+          {item.comments.map((comment, index) => (
+              <View key={index}>
+                <Text style={styles.commentText}>{comment.content}</Text>
+                <Text style={styles.commentTime}>{formatTimestamp(comment.timestamp)}</Text>
+              </View>
+          ))}
+        </View>
+      </TouchableOpacity>
   );
 };
 
@@ -120,59 +120,59 @@ export default function CommentsScreen({ navigation }) {
 
   if (loading) {
     return (
-      <LinearGradient
-        colors={["#064E41", "#3D8C45"]}
-        style={styles.gradientBackground}
-      >
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading comments...</Text>
-        </View>
-      </LinearGradient>
+        <LinearGradient
+            colors={["#064E41", "#3D8C45"]}
+            style={styles.gradientBackground}
+        >
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Loading comments...</Text>
+          </View>
+        </LinearGradient>
     );
   }
 
   return (
-    <LinearGradient
-      colors={isDarkMode ? ["#064E41", "#1E3A34"] : ["#064E41", "#3D8C45"]}
-      style={styles.gradientBackground}
-    >
-      <View style={styles.headerContainer}>
-        <TouchableOpacity
-          onPress={() => {
-            checkIfGobackInfoAvailable(navigation) ?
-              navigation.goBack() :
-              navigation.navigate("Explore")
-          }}
-          style={tw`absolute top-12 left-5 p-2 rounded-full bg-white`}
-        >
-          <Ionicons name="arrow-back" size={24} color="#064E41" />
-        </TouchableOpacity>
-        <Text style={styles.headerText}>My Comments</Text>
-        <View style={styles.darkModeContainer}>
-          <TouchableOpacity onPress={() => setIsDarkMode((prev) => !prev)} style={{ marginLeft: 2 }}>
-            <MaterialIcons
-              name={isDarkMode ? "wb-sunny" : "nightlight-round"}
-              size={24}
-              color="white"
-            />
+      <LinearGradient
+          colors={isDarkMode ? ["#064E41", "#1E3A34"] : ["#064E41", "#3D8C45"]}
+          style={styles.gradientBackground}
+      >
+        <View style={styles.headerContainer}>
+          <TouchableOpacity
+              onPress={() => {
+                checkIfGobackInfoAvailable(navigation) ?
+                    navigation.goBack() :
+                    navigation.navigate("Explore");
+              }}
+              style={tw`absolute top-12 left-5 p-2 rounded-full bg-white`}
+          >
+            <Ionicons name="arrow-back" size={24} color="#064E41" />
           </TouchableOpacity>
+          <Text style={styles.headerText}>My Comments</Text>
+          <View style={styles.darkModeContainer}>
+            <TouchableOpacity onPress={() => setIsDarkMode((prev) => !prev)} style={{ marginLeft: 2 }}>
+              <MaterialIcons
+                  name={isDarkMode ? "wb-sunny" : "nightlight-round"}
+                  size={24}
+                  color="white"
+              />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {commentsData.length > 0 ? (
-          commentsData.map((paper) => (
-            <SimplePaperListItem
-              key={paper.paper_id}
-              item={paper}
-              navigation={navigation}
-              isDarkMode={isDarkMode}
-            />
-          ))
-        ) : (
-          <Text style={styles.noCommentsText}>No comments yet.</Text>
-        )}
-      </ScrollView>
-    </LinearGradient>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {commentsData.length > 0 ? (
+              commentsData.map((paper) => (
+                  <SimplePaperListItem
+                      key={paper.paper_id}
+                      item={paper}
+                      navigation={navigation}
+                      isDarkMode={isDarkMode}
+                  />
+              ))
+          ) : (
+              <Text style={styles.noCommentsText}>No comments yet.</Text>
+          )}
+        </ScrollView>
+      </LinearGradient>
   );
 }
 

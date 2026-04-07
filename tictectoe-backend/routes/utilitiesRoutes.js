@@ -9,6 +9,7 @@ router.get("/getCategories", async (req, res) => {
       const result = await getCategories();   // Fetch data
       res.json(result);                       // ✅ Send response to Postman
     } catch (error) {
+      console.error("Failed to fetch categories, error: ", error);
       res.status(500).json({ message: "Failed to fetch categories" });
     }
   });

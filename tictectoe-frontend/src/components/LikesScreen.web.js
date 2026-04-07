@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from "react";
-import { View, ScrollView, Text, StyleSheet, TouchableOpacity, Switch } from "react-native";
+import { useEffect, useState } from "react";
+import { View, ScrollView, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { PaperListItem } from "../components/small-components/PaperListItem";
 import { fetchLikes } from "../../api";
 import { checkIfLoggedIn } from "./functions/checkIfLoggedIn";
 import { checkIfGobackInfoAvailable } from "./functions/routeGoBackHandler";

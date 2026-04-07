@@ -13,8 +13,7 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.tictectoe"
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
@@ -36,6 +35,9 @@
     },
     "updates": {
       "url": "https://u.expo.dev/c8239da5-fced-479a-a3a8-02102868098c"
-    }
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }

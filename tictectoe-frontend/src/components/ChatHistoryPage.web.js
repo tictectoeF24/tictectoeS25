@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { 
   View, 
   Text, 
@@ -6,8 +6,7 @@ import {
   TouchableOpacity, 
   SafeAreaView, 
   ScrollView, 
-  ActivityIndicator,
-  Dimensions
+  ActivityIndicator
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { FontAwesome } from "@expo/vector-icons";
@@ -360,15 +359,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-  },
-  themeButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
-  },
-  sidebarContent: {
-    flex: 1,
-    padding: 20,
   },
   sidebarTitle: {
     fontSize: 28,

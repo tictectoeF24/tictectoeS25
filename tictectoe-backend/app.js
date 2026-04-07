@@ -1,21 +1,20 @@
-require('dotenv').config();
-console.log('Starting server...');
+require("dotenv").config();
+console.log("Loaded GEMINI_API_KEY:", process.env.GEMINI_API_KEY);
 
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
+require("dotenv").config();
 
-console.log('Loading routes...');
 const authRoutes = require("./routes/authRoutes");
 const profileRoutes = require("./routes/profileRoutes");
 const paperRoutes = require("./routes/paperRoutes");
-const authenticate = require("./middleware/authenticate");
-const utilitiesRoutes = require("./routes/utilitiesRoutes"); 
+const utilitiesRoutes = require("./routes/utilitiesRoutes");
 const userRoutes = require("./routes/userRoutes");
 const followRoutes = require("./routes/followRoutes");
 const chatbotRoutes = require("./routes/chatbot");
 const conversationRoutes = require("./routes/conversationRoutes");
-console.log('Routes loaded successfully');
+const noteRoutes = require("./routes/noteRoutes");
 
 const app = express();
 
@@ -23,35 +22,52 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(bodyParser.json());
-
-// Test route
-app.get("/", (req, res) => {
-  res.status(200).json({ message: "Server is running!" });
-});
-
-console.log('Registering routes...');
 app.use("/api", userRoutes);
 app.use("/auth", authRoutes);
 app.use("/utilities", utilitiesRoutes);
 app.use("/api/follow", followRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/conversations", conversationRoutes);
+app.use("/api/notes", noteRoutes);
 
 // Separate ORCID Authentication Route (Without Authentication)
-app.use("/api/profile/auth/orcid/callback", require("./controllers/profileController").handleOrcidCallback);
+app.use(
+  "/api/profile/auth/orcid/callback",
+  require("./controllers/profileController").handleOrcidCallback
+);
 
 // Additional API routes
 app.use("/api/profile", profileRoutes);
 app.use("/api/paper", paperRoutes);
-console.log('Routes registered successfully');
-
 
 app.get("/health", (req, res) => {
   res.status(200).json({ message: "Server is running" });
 });
 
+//PDF Fetch (For viewing PDF's in EmbedPDF)
+app.get("/api/arxiv-pdf/:id", async (req, res) => {
+  const id = req.params.id;
+  const arxivURL = `https://arxiv.org/pdf/${id}.pdf`;
+
+  const response = await fetch(arxivURL, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      Accept: "application/pdf"
+    }
+  });
+
+  if (!response.ok) {
+    return res.status(response.status).send("Failed to fetch PDF from arxiv");
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.send(buffer);
+});
 
 // Error handling middleware
+// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res
@@ -61,8 +77,9 @@ app.use((err, req, res, next) => {
 
 // Start the server
 const PORT = process.env.PORT || 3001;
-console.log(`Starting server on port ${PORT}`);
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
+const IP = "xxx.xxx.xxx.xxx";
+app.listen(PORT, () => {
+  console.log(`Server running on http://${IP}:${PORT}`);
 });
+
+module.exports = app;

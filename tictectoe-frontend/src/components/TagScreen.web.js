@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, ScrollView, Text, Button, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CheckBox } from 'react-native-elements';
@@ -230,17 +230,6 @@ const styles = StyleSheet.create({
         fontStyle: 'italic',
 
     },
-    title: {
-        fontSize: 20,
-        color: '#fff',
-        fontWeight: 'bold',
-        marginBottom: 10,
-        textAlign: 'center',
-    },
-    checkboxContainer: {
-        backgroundColor: 'transparent',
-        borderWidth: 0,
-    },
     header: {
         fontSize: 30,
         color: '#fff',
@@ -248,14 +237,6 @@ const styles = StyleSheet.create({
         marginBottom: 40,
         textAlign: 'center',
         marginTop: 10,
-    },
-    backButton: {
-        marginTop: 40,
-        marginLeft: 10,
-    },
-    backButtonText: {
-        color: 'white',
-        fontSize: 16,
     },
     Button: {
         marginTop: 10,

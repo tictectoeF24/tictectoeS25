@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Switch, Image, Alert, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Switch, Image, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient'; // For gradient background
 import { CheckBox } from 'react-native-elements'; // Import the CheckBox component
 import { useNavigation } from '@react-navigation/native';
@@ -47,9 +47,9 @@ const TagSelection = () => {
 
   const handleTagChange = (tag) => {
     setSelectedTags((prevTags) =>
-      prevTags.includes(tag)
-        ? prevTags.filter((t) => t !== tag)
-        : [...prevTags, tag]
+        prevTags.includes(tag)
+            ? prevTags.filter((t) => t !== tag)
+            : [...prevTags, tag]
     );
   };
 
@@ -60,7 +60,7 @@ const TagSelection = () => {
     }
 
     try {
-      const response = await updateUserInterests(username, selectedTags);
+      await updateUserInterests(username, selectedTags);
       Alert.alert("Success", "Interests updated successfully.");
       navigation.navigate("Explore");
     } catch (error) {
@@ -70,77 +70,77 @@ const TagSelection = () => {
   };
 
   return (
-    <LinearGradient
-      colors={isDarkMode ? ["#064E41", "#57B360"] : ["#064E41", "#57B360"]}
-      style={styles.container}
-    >
-      <View style={styles.innerContainer}>
-        {/* Header Section with Logo, Title, and Toggle */}
-        <View style={tw`flex-row justify-between items-center mt-5 px-5`}>
-          <View style={tw`flex-row items-center`}>
-            <Image
-              source={require('../../assets/Logo-Transparent.png')}
-              style={tw`w-20 h-25 mr-3`}
+      <LinearGradient
+          colors={isDarkMode ? ["#064E41", "#57B360"] : ["#064E41", "#57B360"]}
+          style={styles.container}
+      >
+        <View style={styles.innerContainer}>
+          {/* Header Section with Logo, Title, and Toggle */}
+          <View style={tw`flex-row justify-between items-center mt-5 px-5`}>
+            <View style={tw`flex-row items-center`}>
+              <Image
+                  source={require('../../assets/Logo-Transparent.png')}
+                  style={tw`w-20 h-25 mr-3`}
+              />
+              <Text style={[tw`font-bold text-3xl`, { color: "white" }]}>
+                Tic Tec Toe
+              </Text>
+            </View>
+
+            <Switch
+                trackColor={{ false: "#767577", true: "#81b0ff" }}
+                thumbColor={isDarkMode ? "#57B360" : "#f4f3f4"}
+                onValueChange={toggleDarkMode}
+                value={isDarkMode}
+                style={tw`ml-4`}
             />
-            <Text style={[tw`font-bold text-3xl`, { color: "white" }]}>
-              Tic Tec Toe
-            </Text>
           </View>
 
-          <Switch
-            trackColor={{ false: "#767577", true: "#81b0ff" }}
-            thumbColor={isDarkMode ? "#57B360" : "#f4f3f4"}
-            onValueChange={toggleDarkMode}
-            value={isDarkMode}
-            style={tw`ml-4`}
-          />
+          {/* Subtitle Section */}
+          <Text style={[tw` text-5l text-center mt-5 mb-5`, { color: "white" }]}>
+            Select Your Interests
+          </Text>
+
+          {/* Scrollable Tags Section */}
+          <ScrollView contentContainerStyle={styles.scrollView}>
+            <View style={tw`flex-row flex-wrap justify-center`}>
+              {availableTags.map((tag) => (
+                  <TouchableOpacity
+                      key={tag}
+                      onPress={() => handleTagChange(tag)}
+                      style={[tw`m-2 px-4 py-3 rounded-full items-center flex-row`, {
+                        backgroundColor: isDarkMode ? "#2a2a2a" : "#ffffff",
+                        shadowColor: "#000",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 4,
+                        elevation: 5,
+                        minWidth: 100,
+                      }]}
+                  >
+                    <CheckBox
+                        checked={selectedTags.includes(tag)}
+                        onPress={() => handleTagChange(tag)}
+                        containerStyle={tw`bg-transparent border-0 p-0`}
+                        checkedColor="#57B360"
+                    />
+                    <Text style={[{ color: isDarkMode ? "#ffffff" : "#000000", fontSize: 16 }, tw`ml--2`]}>
+                      {tag}
+                    </Text>
+                  </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+
+          {/* Fixed Submit Button */}
+          <TouchableOpacity
+              style={tw`mt-5 bg-[#57B360] shadow-lg py-3 px-10 rounded-lg self-center mb-10`}
+              onPress={submitTags}
+          >
+            <Text style={tw`font-bold text-white text-center text-lg`}>Submit</Text>
+          </TouchableOpacity>
         </View>
-
-        {/* Subtitle Section */}
-        <Text style={[tw` text-5l text-center mt-5 mb-5`, { color: "white" }]}>
-          Select Your Interests
-        </Text>
-
-        {/* Scrollable Tags Section */}
-        <ScrollView contentContainerStyle={styles.scrollView}>
-          <View style={tw`flex-row flex-wrap justify-center`}>
-            {availableTags.map((tag) => (
-              <TouchableOpacity
-                key={tag}
-                onPress={() => handleTagChange(tag)}
-                style={[tw`m-2 px-4 py-3 rounded-full items-center flex-row`, {
-                  backgroundColor: isDarkMode ? "#2a2a2a" : "#ffffff",
-                  shadowColor: "#000",
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.1,
-                  shadowRadius: 4,
-                  elevation: 5,
-                  minWidth: 100,
-                }]}
-              >
-                <CheckBox
-                  checked={selectedTags.includes(tag)}
-                  onPress={() => handleTagChange(tag)}
-                  containerStyle={tw`bg-transparent border-0 p-0`}
-                  checkedColor="#57B360"
-                />
-                <Text style={[{ color: isDarkMode ? "#ffffff" : "#000000", fontSize: 16 }, tw`ml--2`]}>
-                  {tag}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-
-        {/* Fixed Submit Button */}
-        <TouchableOpacity
-          style={tw`mt-5 bg-[#57B360] shadow-lg py-3 px-10 rounded-lg self-center mb-10`}
-          onPress={submitTags}
-        >
-          <Text style={tw`font-bold text-white text-center text-lg`}>Submit</Text>
-        </TouchableOpacity>
-      </View>
-    </LinearGradient>
+      </LinearGradient>
   );
 };
 

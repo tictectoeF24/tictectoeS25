@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -23,7 +23,7 @@ const AuthenticationSignInPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [switchEnabled, setSwitchEnable] = useState(false);
   const [screenData, setScreenData] = useState(Dimensions.get("window"));
-
+  const [signInError, setSignInError] = useState("");
   const navigation = useNavigation();
 
   // Dynamic screen size tracking
@@ -52,27 +52,51 @@ const AuthenticationSignInPage = () => {
   };
 
   const handleSubmit = async () => {
-    if (!email || !password) {
-      alert("Error, All fields are mandatory");
+  // clear any old inline error
+  setSignInError("");
+
+  if (!email || !password) {
+    setSignInError("Email and password are required.");
+    return;
+  }
+
+  try {
+    const data = await signIn(email, password);
+
+    // If backend says account is unverified, go to OTP screen
+    if (data?.unverified) {
+      const lower = (email || "").trim().toLowerCase();
+      Alert.alert(
+        "Verify your email",
+        data.resent ? "We just sent you a new OTP." : "Please enter the OTP we sent you."
+      );
+      navigation.navigate("AuthenticationVerifyPage", { email: lower, from: "signin" });
       return;
     }
 
-    try {
-      const data = await signIn(email, password);
-
-      if (data && data.token) {
-        await AsyncStorage.setItem("jwtToken", data.token);
-        setEmail("");
-        setPassword("");
-        Alert.alert("Success", "Signed in successfully");
-        navigation.navigate("Explore");
-      } else {
-        Alert.alert("Error", "Failed to sign in");
-      }
-    } catch (error) {
-      Alert.alert("Error", error.message || "Invalid email or password");
+    // Normal success
+    if (data && data.token) {
+      await AsyncStorage.setItem("jwtToken", data.token);
+      setEmail("");
+      setPassword("");
+      navigation.navigate("Explore");
+      return;
     }
-  };
+
+    // Fallback
+    setSignInError("Failed to sign in.");
+  } catch (error) {
+    // Normalize known messages from backend
+    const raw = typeof error === "string" ? error : (error?.message || "");
+    const friendly =
+      raw === "User not found"
+        ? "No account found with that email."
+        : raw === "Invalid password"
+        ? "Incorrect password. Try again."
+        : raw || "Failed to sign in.";
+    setSignInError(friendly);
+  }
+};
 
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
@@ -295,7 +319,7 @@ const AuthenticationSignInPage = () => {
             </View>
 
             {/* Password Field */}
-            <View style={[tw`w-full`, { marginBottom: dynamicStyles.inputContainer.marginBottom }]}>
+            {/* <View style={[tw`w-full`, { marginBottom: dynamicStyles.inputContainer.marginBottom }]}>
               <Text style={[
                 tw`text-white font-semibold ml-1`,
                 { 
@@ -345,7 +369,59 @@ const AuthenticationSignInPage = () => {
                   />
                 </TouchableOpacity>
               </View>
+            </View> */}
+            {/* Password Field */}
+          <View style={[tw`w-full`, { marginBottom: dynamicStyles.inputContainer.marginBottom }]}>
+            <Text style={[
+              tw`text-white font-semibold ml-1`,
+              { 
+                fontSize: dynamicStyles.inputLabel.fontSize,
+                marginBottom: dynamicStyles.inputLabel.marginBottom
+              }
+            ]}>
+              Password
+            </Text>
+            <View style={tw`relative w-full`}>
+              <TextInput
+                style={[
+                  tw.style(`w-full shadow-lg`, inputBgColor, inputTextColor),
+                  {
+                    height: dynamicStyles.input.height,
+                    paddingHorizontal: dynamicStyles.input.paddingHorizontal,
+                    paddingRight: dynamicStyles.input.paddingRight,
+                    fontSize: dynamicStyles.input.fontSize,
+                    borderRadius: dynamicStyles.input.borderRadius,
+                  }
+                ]}
+                onChangeText={setPassword}
+                value={password}
+                secureTextEntry={!showPassword}
+                onSubmitEditing={handleSubmit}
+                placeholder="Enter your password"
+                placeholderTextColor={switchEnabled ? "#999" : "#666"}
+              />
+              <TouchableOpacity
+                onPress={togglePasswordVisibility}
+                style={[
+                  tw`absolute p-1`,
+                  { right: dynamicStyles.inputIcon.right, top: dynamicStyles.inputIcon.top }
+                ]}
+              >
+                <Ionicons
+                  name={showPassword ? "eye" : "eye-off"}
+                  size={dynamicStyles.iconSize}
+                  color={switchEnabled ? "#999" : "#666"}
+                />
+              </TouchableOpacity>
             </View>
+
+            {/* 🔴 Inline error goes HERE */}
+            {signInError ? (
+              <Text style={[tw`text-red-300 mt-2 ml-1`, { fontSize: dynamicStyles.linkText.fontSize * 0.85 }]}>
+                {signInError}
+              </Text>
+            ) : null}
+          </View>
 
             {/* Forgot Password Link */}
             <View style={[tw`w-full flex flex-row justify-end`, { marginBottom: dynamicStyles.inputContainer.marginBottom }]}>

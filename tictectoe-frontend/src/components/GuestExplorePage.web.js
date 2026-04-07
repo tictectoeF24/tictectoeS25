@@ -4,10 +4,11 @@ import { FontAwesome, MaterialIcons } from "@expo/vector-icons"
 import { lightStyles, darkStyles } from "../styles/ExplorePageStyles"
 import { useNavigation } from "@react-navigation/native"
 import { LinearGradient } from "expo-linear-gradient"
-import { signOut } from "../../api"
-import { fetchPapersByClickCount } from "../../api"
+import { fetchPapersByClickCountByLimit, signOut } from "../../api"
+import { fetchPapersByClickCount} from "../../api"
 import ExpandableChat from "./ExpandableChat.web";
-
+import InfiniteScroll from 'react-infinite-scroll-component';
+import PaperListItemWeb from "./small-components/PaperListItemWeb";
 
 // Function to clean LaTeX formatting and make it readable
 const cleanLatexText = (text) => {
@@ -266,6 +267,7 @@ const cleanLatexText = (text) => {
 
 const GuestExplorePage = () => {
   const [isDarkMode, setIsDarkMode] = useState(false)
+  const [hoverTheme, setHoverTheme] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeComments, setActiveComments] = useState(null)
   const [commentsData, setCommentsData] = useState({})
@@ -281,6 +283,8 @@ const GuestExplorePage = () => {
   const [hoverBookmarks, setHoverBookmarks] = useState(false)
   const [pressedExplore, setPressedExplore] = useState(false)
   const [pressedBookmarks, setPressedBookmarks] = useState(false)
+  // Hover states for paper buttons: 'like'|'bookmark'|'share'|'info'
+  const [hoveredButtons, setHoveredButtons] = useState({})
   const [startDate, setStartDate] = useState(null)
   const [endDate, setEndDate] = useState(null)
   const [showStartPicker, setShowStartPicker] = useState(false)
@@ -291,6 +295,9 @@ const GuestExplorePage = () => {
   const [windowHeight, setWindowHeight] = useState(Dimensions.get("window").height)
   const [showDateRangePicker, setShowDateRangePicker] = useState(false)
   const flatListRef = useRef(null)
+  const [focusedPaper, setFocusedPaper] = useState(null);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
   // Handle window resize
   useEffect(() => {
@@ -307,12 +314,12 @@ const GuestExplorePage = () => {
     const loadPapersData = async () => {
       setLoading(true)
       try {
-        const response = await fetchPapersByClickCount()
+        const response = await fetchPapersByClickCountByLimit()
         if (!response?.data || response.data.length === 0) {
           console.log("No papers found")
           setError("No papers available at the moment.")
         } else {
-          console.log("Setting papers:", response.data)
+          //console.log("Setting papers:", response.data)
           setPapers(response.data)
         }
       } catch (err) {
@@ -598,176 +605,126 @@ const GuestExplorePage = () => {
               >
                 <Text style={{ color: "white", fontSize: "0.85rem", fontWeight: "500" }}>Sign In</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={toggleTheme}>
+              {/*<TouchableOpacity onPress={toggleTheme}>
                 <MaterialIcons name={isDarkMode ? "wb-sunny" : "nightlight-round"} size={20} color="white" />
-              </TouchableOpacity>
+              </TouchableOpacity>*/}
+              <View style={{ position: "relative" }}>
+                  <TouchableOpacity 
+                  onPress={toggleTheme}
+                  onMouseEnter={() => setHoverTheme(true)}
+                  onMouseLeave={() => setHoverTheme(false)}
+                  style={{
+                    padding: 8,
+                    borderRadius: 6,
+                    backgroundColor: hoverTheme 
+                    ? (isDarkMode ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.2)") 
+                    : "transparent",}}>
+                      <MaterialIcons 
+                      name={isDarkMode ? "wb-sunny" : "nightlight-round"} 
+                      size={20} 
+                      color="white" />
+                  </TouchableOpacity>
+                  {hoverTheme && (
+                    <View
+                    style={{
+                      position: "absolute",
+                      bottom: -30,
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      backgroundColor: "#2B5A3E",
+                      padding: "4px 8px",
+                      borderRadius: 4,
+                      zIndex: 1000,}}>
+                        <Text style={{ color: "white", fontSize: 12 }}>
+                          {isDarkMode ? "Light Mode" : "Dark Mode"}</Text>
+                    </View>)}
+                </View>
             </View>
           </View>
 
-          {error ? (
-            <Text
+            {error ? (
+              <Text
+                style={{
+                  color: "red",
+                  textAlign: "center",
+                  marginTop: "0.5rem",
+                  position: "absolute",
+                  width: "100%",
+                  zIndex: 1,
+                }}
+              >
+                {error}
+              </Text>
+            ) : loading ? (
+              <View style={{ height: "100vh", justifyContent: "center", alignItems: "center" }}>
+                <Text style={{ color: "white", fontSize: "30px", fontWeight: "bold" }}>Loading...</Text>
+              </View>
+            ) : null}
+
+            <InfiniteScroll
+              dataLength={papers.length}
+              next={async () => {
+                console.log('InfiniteScroll next triggered, hasMore:', hasMore, 'current page (offset):', page);
+                if (!hasMore) {
+                  console.log('No more papers to load');
+                  return;
+                }
+                const PAPER_RANGE_OFFSET = 21;
+                const newOffset = page + PAPER_RANGE_OFFSET;
+                setPage(newOffset);
+                try {
+                  const response = await fetchPapersByClickCountByLimit(newOffset);
+                  setPapers(prev => [...prev, ...response.data]);
+                  if (response.data.length < PAPER_RANGE_OFFSET) {
+                    setHasMore(false);
+                  }
+                } catch (error) {
+                  console.error('Error fetching more papers:', error);
+                  setHasMore(false);
+                }
+              }}
+              hasMore={hasMore}
+              loader={<Text style={{ textAlign: 'center', padding: "2rem", color: "white", fontSize: "1.2rem" }}>Loading...</Text>}
+              endMessage={
+                <p style={{ textAlign: 'center' }}>
+                  <b><Text>You have reached the end</Text></b>
+                </p>
+              }
+              height="calc(100vh - 90px)"
               style={{
-                color: "red",
-                textAlign: "center",
-                padding: "0.5rem",
-                position: "absolute",
-                width: "100%",
-                zIndex: 1,
+                paddingTop: 20,
               }}
             >
-              {error}
-            </Text>
-          ) : loading ? (
-            <View style={{ height: "100vh", justifyContent: "center", alignItems: "center" }}>
-              <Text style={{ color: "white", fontSize: "30px", fontWeight: "bold" }}>Loading...</Text>
-            </View>
-          ) : papers.length === 0 ? (
-            <Text style={{ textAlign: "center", padding: "0.5rem", position: "absolute", width: "100%", zIndex: 1 }}>
-              No papers found
-            </Text>
-          ) : null}
-
-          <ScrollView
-            style={gridStyles.scrollContainer}
-            contentContainerStyle={gridStyles.scrollContent}
-            showsVerticalScrollIndicator={false}
-            onScroll={({ nativeEvent }) => {
-              const { layoutMeasurement, contentOffset, contentSize } = nativeEvent
-              const paddingToBottom = 20
-              if (layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom) {
-                // Load more papers here if needed
-              }
-            }}
-            scrollEventThrottle={400}
-          >
-            <View style={gridStyles.papersContainer}>
-              {papers.map((item, index) => (
-                <TouchableOpacity
-                  key={item.paper_id}
-                  onPress={handleAuthRequired}
-                  style={gridStyles.paperWrapper}
-                  activeOpacity={0.8}
-                >
-                  <View style={[gridStyles.card, { backgroundColor: isDarkMode ? "#2C2C2C" : "#ffffff" }]}>
-                    {/* Main content area (genre and date added) */}
-                      <LinearGradient
-                        colors={["#064E41", "#3D8C45"]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={gridStyles.headerGradient}
-                      >
-                       <View style={gridStyles.headerRow}>
-                         <View style={gridStyles.genreTag}>
-                           <Text style={gridStyles.genreText}>
-                             {item.category_readable ? item.category_readable : (item.categories ? item.categories.split(",")[0].trim() : "General")}
-                           </Text>
-                         </View>
-                       <Text style={gridStyles.dateText}>{formatDate(item.published_date)}</Text>
-                     </View>
-                     </LinearGradient>
-                     
-                    <View style={gridStyles.cardContent}>
-                      <Text style={[gridStyles.title, { color: isDarkMode ? "#fff" : "#064E41" }]} numberOfLines={3}>
-                        {cleanLatexText(item.title)}
-                      </Text>
-                      <Text style={[gridStyles.author, { color: isDarkMode ? "#ccc" : "#555" }]} numberOfLines={1}>
-                        {item.author_names || "Unknown Author"}
-                      </Text>
-                      {/* <Text style={[gridStyles.date, { color: isDarkMode ? "#aaa" : "#888" }]}>
-                        {formatDate(item.published_date)}
-                      </Text> */}
-                      <TouchableOpacity onPress={handleAuthRequired} activeOpacity={0.9} style={{ flex: 1, minHeight: 0 }}>
-                        <ScrollView
-                          nestedScrollEnabled={true}
-                          showsVerticalScrollIndicator={false}
-                          style={{ flexGrow: 1 }}
-                          contentContainerStyle={{ flexGrow: 1 }}
-                        >
-                          <Text
-                            style={[
-                              gridStyles.summary,
-                              {
-                                color: isDarkMode ? "#ddd" : "#666",
-                                display: "block",
-                                whiteSpace: "normal",
-                                wordBreak: "break-word",
-                                textAlign: "left", // Changed from justify to left for better spacing
-                              },
-                            ]}
-                          >
-                            {cleanLatexText(item.summary)}
-                          </Text>
-                        </ScrollView>
-                      </TouchableOpacity>
-
-                    </View>
-
-                    {/* Integrated icon row */}
-                    <View
-                      style={[
-                        gridStyles.iconRow,
-                        {
-                          backgroundColor: isDarkMode ? "#3C3C3C" : "#ffffff",
-                          borderTop: `1px solid ${isDarkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
-                        },
-                      ]}
-                    >
-                      <View style={{ alignItems: "center" }}>
-                        <TouchableOpacity onPress={handleAuthRequired}>
-                          <FontAwesome
-                            name="heart-o"
-                            size={20}
-                            color={isDarkMode ? "#fff" : "#333333"}
-                          />
-                        </TouchableOpacity>
-                        <Text
-                          style={{
-                            color: isDarkMode ? "#fff" : "#333",
-                            fontSize: 9,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {item.like_count || 0}
-                        </Text>
+              <View style={gridStyles.scrollContent}>
+                <View style={gridStyles.papersContainer}>
+                  {papers.map((item, index) => {
+                    //console.log("Rendering paper:", item);        
+                    return (
+                      <View key={index} style={gridStyles.paperWrapper}>
+                        <PaperListItemWeb
+                          item={item}
+                          navigation={navigation}
+                          userId={profileData?.id}
+                          isDarkMode={isDarkMode}
+                          showAuthModal={() => alert("Please log in to use this feature.")}
+                          setFocusedPaper={setFocusedPaper}
+                          gridStyles={gridStyles}
+                        />
                       </View>
-                      <View style={{ alignItems: "center" }}>
-                        <TouchableOpacity onPress={handleAuthRequired}>
-                          <FontAwesome
-                            name="bookmark-o"
-                            size={20}
-                            color={isDarkMode ? "#fff" : "#333333"}
-                          />
-                        </TouchableOpacity>
-                        <Text
-                          style={{
-                            color: isDarkMode ? "#fff" : "#333",
-                            fontSize: 9,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {item.bookmark_count || 0}
-                        </Text>
-                      </View>
-                      <TouchableOpacity onPress={handleAuthRequired}>
-                        <FontAwesome name="share" size={20} color={isDarkMode ? "#fff" : "#333333"} />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={handleAuthRequired}>
-                        <FontAwesome name="info-circle" size={20} color={isDarkMode ? "#fff" : "#333333"} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
+                    );
+                  })}
+                </View>
 
-            {papers.length === 0 && !loading && (
-              <Text style={{ textAlign: "center", padding: "2rem", color: "white", fontSize: "1.2rem" }}>
-                No papers found
-              </Text>
-            )}
-          </ScrollView>
-        </View>
-      </LinearGradient>
+                {papers.length === 0 && !loading && (
+                  <Text style={{ textAlign: "center", padding: "2rem", color: "white", fontSize: "1.2rem" }}>
+                    No papers found
+                  </Text>
+                )}
+              </View>
+            </InfiniteScroll>
+          </View>
+        </LinearGradient>
+     
 
       {showModal && (
         <View style={styles.modalOverlay}>

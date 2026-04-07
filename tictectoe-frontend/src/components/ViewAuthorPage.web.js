@@ -1,10 +1,7 @@
-import { Text, View, SafeAreaView, TouchableOpacity, Switch, Modal, TextInput, FlatList, ScrollView, Alert } from 'react-native';
+import { Text, View, SafeAreaView, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import tw, { useDeviceContext, useAppColorScheme } from 'twrnc';
-import { Ionicons, FontAwesome, AntDesign } from 'react-native-vector-icons';
-import React, { useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
-import { updatePrivacySettings } from '../../api';
+import tw, {} from 'twrnc';
+import { Ionicons } from 'react-native-vector-icons';
 import { checkIfLoggedIn } from './functions/checkIfLoggedIn';
 
 const ViewAuthorPage = () => {

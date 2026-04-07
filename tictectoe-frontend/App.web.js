@@ -1,8 +1,8 @@
 import "react-native-gesture-handler";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createNavigationContainerRef, NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
-import { SafeAreaView, Button, View, Text } from "react-native";
+import { SafeAreaView, Button, Text } from "react-native";
 import ExplorePage from "./src/components/ExplorePage";
 import AuthenticationVerifyPage from "./src/components/AuthenticationVerifyPage.web";
 import AuthenticationSignUpPage from "./src/components/AuthenticationSignUpPage";
@@ -15,12 +15,14 @@ import SetNewPasswordPage from "./src/components/SetNewPasswordPage";
 import BookmarksScreen from "./src/components/BookmarksScreen";
 import EditProfilePage from "./src/components/EditProfilePage";
 import PaperNavigationPage from "./src/components/PaperNavigationPage";
+import NotesScreen from "./src/components/PaperNotesPage.web";
 import ListenPage from "./src/components/ListenPage";
 import TagScreen from "./src/components/TagScreen";
 import ViewAuthorPage from "./src/components/ViewAuthorPage";
 import LikesScreen from "./src/components/LikesScreen";
 import CommentsScreen from "./src/components/CommentsScreen";
 import GuestExplorePage from "./src/components/GuestExplorePage.web";
+import RecommendedPapersScreen from "./src/components/RecommendedPapersScreen.web"
 
 import SearchUsersPage from "./src/components/SearchUsersPage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -93,7 +95,13 @@ export default function App() {
     const loadRoute = async () => {
       try {
         const savedRoute = await AsyncStorage.getItem("currentRoute");
-        if (savedRoute) {
+        let checkURLArray = checkIfUserIsAccessingPaperViaURL();
+        //console.log("isAccessingPaperID: " + checkURLArray.isAccessingPaperID + " isAccessingDOI: " + checkURLArray.isAccessingDOI);
+        if (checkURLArray.isAccessingPaperID || checkURLArray.isAccessingDOI){
+          console.log("Accessing URL THROUGH PAPER_ID OR DOI");
+          setCurrentRoute(`PaperNavigationPage`);
+        }
+        else if (savedRoute) {
           const jwtToken = await AsyncStorage.getItem("jwtToken");
           if (jwtToken) {
             setCurrentRoute(savedRoute);
@@ -149,6 +157,18 @@ export default function App() {
 
   if (!isReady) {
     return null;
+  }
+
+  function checkIfUserIsAccessingPaperViaURL(){
+    let returnObject = {isAccessingPaperID: false, isAccessingDOI: false};
+    const parsedURL = window.location.href.replace("http://localhost:8081/", "");
+    if(parsedURL.includes("paper/")){
+      returnObject.isAccessingPaperID = true;
+    }
+    else if (parsedURL.includes("arxiv.org/abs/")){
+      returnObject.isAccessingDOI = true;
+    }
+    return returnObject;
   }
 
   return (
@@ -228,6 +248,11 @@ export default function App() {
             component={PaperNavigationPage}
           />
           <Stack.Screen
+              name="PaperNotesPage"
+              component={NotesScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name="TagScreen"
             component={TagScreen}
           />
@@ -238,6 +263,10 @@ export default function App() {
           <Stack.Screen
             name="BookmarksScreen"
             component={BookmarksScreen}
+          />
+          <Stack.Screen
+            name="RecommendedPapersScreen"
+            component={RecommendedPapersScreen}
           />
           <Stack.Screen
             name="LikesScreen"

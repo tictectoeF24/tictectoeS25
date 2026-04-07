@@ -1,11 +1,9 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { View, ScrollView, Text, StyleSheet, TouchableOpacity, Switch } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { PaperListItem } from "../components/small-components/PaperListItem";
 import { fetchComments } from "../../api";
 import { checkIfLoggedIn } from "./functions/checkIfLoggedIn";
-import { checkIfGobackInfoAvailable } from "./functions/routeGoBackHandler";
-import { Ionicons, FontAwesome } from "@expo/vector-icons";
+import { Ionicons} from "@expo/vector-icons";
 import tw from "twrnc";
 import { MaterialIcons } from "@expo/vector-icons";
 

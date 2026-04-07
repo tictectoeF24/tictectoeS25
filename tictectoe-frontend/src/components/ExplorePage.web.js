@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef } from "react"
-import { View, TextInput, TouchableOpacity, Text, Share, Alert, Image, Dimensions, ScrollView } from "react-native"
 import { FontAwesome, MaterialIcons } from "@expo/vector-icons"
-import { lightStyles, darkStyles } from "../styles/ExplorePageStyles"
+import AsyncStorage from "@react-native-async-storage/async-storage"
 import { useNavigation, useRoute } from "@react-navigation/native"
 import { LinearGradient } from "expo-linear-gradient"
-import { searchPapers, fetchProfile, signOut, BASE_URL, fetchPapersByClickCount } from "../../api"
-import AsyncStorage from "@react-native-async-storage/async-storage"
+import { useEffect, useRef, useState } from "react"
+import InfiniteScroll from 'react-infinite-scroll-component'
+import { Dimensions, Image, ScrollView, Share, Text, TextInput, TouchableOpacity, View } from "react-native"
+import { BASE_URL, fetchExploreRecommendations, fetchProfile, signOut } from "../../api"
+import { darkStyles, lightStyles } from "../styles/ExplorePageStyles"
 import { checkIfLoggedIn } from "./functions/checkIfLoggedIn"
-import PaperListItemWeb from "./small-components/PaperListItemWeb";
+import PaperListItemWeb from "./small-components/PaperListItemWeb"
 
 // Function to clean LaTeX formatting and make it readable
 const cleanLatexText = (text) => {
@@ -275,32 +276,27 @@ const ORCID_REDIRECT_URI = `${BASE_URL}/api/profile/auth/orcid/callback`
 const ExplorePage = () => {
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
-  const [activeComments, setActiveComments] = useState(null)
-  const [commentsData, setCommentsData] = useState({})
-  const [newComment, setNewComment] = useState("")
   const [showOrcidLogin, setShowOrcidLogin] = useState(true)
   const [papers, setPapers] = useState([])
+  const [explorePapers, setExplorePapers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const navigation = useNavigation()
-  const route = useRoute()
   const datePickerRef = useRef(null)
   const styles = isDarkMode ? darkStyles : lightStyles
-  const [hoverExplore, setHoverExplore] = useState(false)
-  const [hoverBookmarks, setHoverBookmarks] = useState(false)
-  const [pressedExplore, setPressedExplore] = useState(false)
-  const [pressedBookmarks, setPressedBookmarks] = useState(false)
+  const [hoveredHistory, setHoveredHistory] = useState(false)
+  const [hoveredTheme, setHoveredTheme] = useState(false)
+  const [hoveredUser, setHoveredUser] = useState(false)
+  const [hoveredSignout, setHoveredSignout] = useState(false)
+  const [likedMap, setLikedMap] = useState({})
   const [startDate, setStartDate] = useState(null)
   const [endDate, setEndDate] = useState(null)
-  const [showStartPicker, setShowStartPicker] = useState(false)
-  const [showEndPicker, setShowEndPicker] = useState(false)
   const [profileData, setProfileData] = useState(null)
   const [windowWidth, setWindowWidth] = useState(Dimensions.get("window").width)
-  const [windowHeight, setWindowHeight] = useState(Dimensions.get("window").height)
-  const [hasActiveFilters, setHasActiveFilters] = useState(false)
   const [showDateRangePicker, setShowDateRangePicker] = useState(false)
-  const flatListRef = useRef(null)
   const [focusedPaper, setFocusedPaper] = useState(null)
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
   // Handle ORCID login
   const handleORCIDLogin = () => {
@@ -346,7 +342,7 @@ const ExplorePage = () => {
           setShowOrcidLogin(true)
           return
         }
-        const profileData = await fetchProfile(token)
+        const profileData = await fetchProfile()
         if (!profileData) {
           console.log("Profile data not found.")
           setShowOrcidLogin(true)
@@ -390,6 +386,7 @@ const ExplorePage = () => {
       setHoverExplore(false)
     } else {
       setHoverBookmarks(true)
+      // setHoverBookmarks(false)
     }
   }
 
@@ -406,6 +403,7 @@ const ExplorePage = () => {
       setPressedExplore(false)
     } else {
       setPressedBookmarks(true)
+      // setPressedBookmarks(false)
     }
   }
 
@@ -425,33 +423,70 @@ const ExplorePage = () => {
 
     try {
       // The data source
-      const response = await fetchPapersByClickCount()
-      if (!response?.data || response.data.length === 0) {
-        console.log("No papers found")
+      const fetchedPapers = await fetchExploreRecommendations();
+
+      if (!fetchedPapers?.data || fetchedPapers.data.length === 0) {
+        console.log("No explore papers found")
+
         setError("No papers available at the moment.")
+        setExplorePapers([])
+        setPapers([])
       } else {
-        console.log("Setting papers:", response.data)
-
-        //debugging to check if the response is valid (categories is null)
-        console.log("Paper data:", response.data[0])
-        console.log("Categories:", response.data[0]?.categories)
-        console.log("All fields in paper:", Object.keys(response.data[0]))
-
-        setPapers(response.data)
+        //console.log("Setting explore papers:", fetchedPapers.data)
+        setExplorePapers(fetchedPapers.data)
+        setPapers(fetchedPapers.data)
       }
 
       // Fetch profile data for authenticated features
       const token = await AsyncStorage.getItem("jwtToken")
       if (token) {
-        const profileData = await fetchProfile(token)
+        const profileData = await fetchProfile()
         setProfileData(profileData)
       }
     } catch (err) {
-      console.error("Error fetching papers:", err)
+      console.error("Error fetching explore papers:", err)
       setError("Failed to load papers. Please check your network connection.")
     } finally {
       setLoading(false)
     }
+  }
+
+  const applyFilters = (
+      sourcePapers,
+      query = searchQuery,
+      start = startDate,
+      end = endDate
+  ) => {
+    let filtered = [...sourcePapers]
+    const trimmedQuery = query.trim().toLowerCase()
+
+    if (trimmedQuery) {
+      filtered = filtered.filter((paper) => {
+        const titleMatch = paper.title?.toLowerCase().includes(trimmedQuery)
+        const authorMatch = paper.author_names?.toLowerCase().includes(trimmedQuery)
+        return titleMatch || authorMatch
+      })
+    }
+
+    if (start) {
+      const startOfMonth = new Date(start.getFullYear(), start.getMonth(), 1)
+      filtered = filtered.filter((paper) => {
+        if (!paper.published_date) return false
+        return new Date(paper.published_date) >= startOfMonth
+      })
+    }
+
+    if (end) {
+      const endOfMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0)
+      endOfMonth.setHours(23, 59, 59, 999)
+
+      filtered = filtered.filter((paper) => {
+        if (!paper.published_date) return false
+        return new Date(paper.published_date) <= endOfMonth
+      })
+    }
+
+    return filtered
   }
 
   const handleDateFilter = async () => {
@@ -459,40 +494,24 @@ const ExplorePage = () => {
     setError(null)
 
     try {
-      const token = await AsyncStorage.getItem("jwtToken")
-      if (!token) {
-        throw new Error("Session expired. Please log in again.")
-      }
+      const filtered = applyFilters(
+          explorePapers,
+          searchQuery,
+          startDate,
+          endDate
+      )
 
-      // const formattedStartDate = startDate ? startDate.toLocaleDateString("en-CA") : null
-      // const formattedEndDate = endDate ? endDate.toLocaleDateString("en-CA") : null
-
-      // Always use the first day for startDate
-      let formattedStartDate = startDate
-        ? new Date(startDate.getFullYear(), startDate.getMonth(), 1).toLocaleDateString("en-CA")
-        : null
-
-      // If endDate is set, use the last day of that month
-      let formattedEndDate = endDate
-        ? new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).toLocaleDateString("en-CA")
-        : null
-
-      //   
-      const data = await searchPapers("", formattedStartDate, formattedEndDate)
-      if (data.length === 0) {
-        setError("No results found for the selected date range.")
+      if (!filtered || filtered.length === 0) {
+        setError("No papers found for the selected date range.")
+        setPapers([])
       } else {
-        setPapers(data)
-        setHasActiveFilters(true)
+        setError(null)
+        setPapers(filtered)
+        setHasActiveFilters(!!startDate || !!endDate)
       }
     } catch (err) {
-      console.error("Error filtering by date range:", err)
-      if (err.message.includes("Session expired")) {
-        Alert.alert("Session Expired", "Please log in again.")
-        navigation.navigate("Login")
-      } else {
-        setError("Failed to filter by date range. Please try again.")
-      }
+      console.error("Error filtering papers by date range:", err)
+      setError("Failed to filter papers. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -502,36 +521,53 @@ const ExplorePage = () => {
     setStartDate(null)
     setEndDate(null)
     setHasActiveFilters(false)
-    await loadPapersData()
-  }
-
-  const handleSearch = async () => {
     setLoading(true)
     setError(null)
 
     try {
-      const query = searchQuery.trim()
-      if (query === "") {
-        await loadPapersData()
-        return
-      }
+      const filtered = applyFilters(explorePapers, searchQuery, null, null)
 
-      console.log("Searching for:", query)
-      const data = await searchPapers(query)
-
-      if (data && data.length === 0) {
-        setError(`No results found for "${query}". Try different keywords.`)
+      if (!filtered || filtered.length === 0) {
+        setError("No papers found.")
         setPapers([])
-      } else if (data) {
-        setPapers(data)
-        setError(null)
       } else {
-        setError("Search failed. Please try again.")
-        setPapers([])
+        setError(null)
+        setPapers(filtered)
       }
     } catch (err) {
-      console.error("Error fetching search results:", err)
-      setError("Failed to load search results. Please check your network connection.")
+      console.error("Error clearing date filters:", err)
+      setError("Failed to clear filters.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSearch = async (queryText = searchQuery) => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const filtered = applyFilters(
+          explorePapers,
+          queryText,
+          startDate,
+          endDate
+      )
+
+      if (!filtered || filtered.length === 0) {
+        setError(
+            `No papers found${
+                queryText.trim() ? ` for "${queryText.trim()}"` : ""
+            }.`
+        )
+        setPapers([])
+      } else {
+        setError(null)
+        setPapers(filtered)
+      }
+    } catch (err) {
+      console.error("Error filtering papers:", err)
+      setError("Failed to filter papers.")
       setPapers([])
     } finally {
       setLoading(false)
@@ -558,17 +594,9 @@ const ExplorePage = () => {
       clearTimeout(searchTimeout.current)
     }
 
-    // Clear search if empty
-    if (text.trim() === "") {
-      searchTimeout.current = setTimeout(() => {
-        loadPapersData()
-      }, 300)
-      return
-    }
-
     // Search with improved debouncing (needs improvements)
     searchTimeout.current = setTimeout(() => {
-      handleSearch()
+      handleSearch(text)
     }, 800)
   }
 
@@ -876,7 +904,7 @@ const ExplorePage = () => {
                             marginBottom: 8,
                           }}
                         >
-                          <span
+                          <Text
                             style={{
                               fontSize: "0.8rem",
                               fontWeight: "600",
@@ -884,7 +912,7 @@ const ExplorePage = () => {
                             }}
                           >
                             Start Month
-                          </span>
+                          </Text>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <TouchableOpacity
                               onPress={() => {
@@ -966,7 +994,7 @@ const ExplorePage = () => {
                             marginBottom: 8,
                           }}
                         >
-                          <span
+                          <Text
                             style={{
                               fontSize: "0.8rem",
                               fontWeight: "600",
@@ -974,7 +1002,7 @@ const ExplorePage = () => {
                             }}
                           >
                             End Month
-                          </span>
+                          </Text>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <TouchableOpacity
                               onPress={() => {
@@ -1137,18 +1165,135 @@ const ExplorePage = () => {
                   marginLeft: 20,
                 }}
               >
-                <TouchableOpacity onPress={() => navigation.navigate('ChatHistoryPage')}>
+                {/*<TouchableOpacity onPress={() => navigation.navigate('ChatHistoryPage')}>
                   <FontAwesome name="android" size={20} color="white" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={toggleTheme}>
+                </TouchableOpacity>*/}
+
+                {/* History Icon with Hover Effect */}
+                <View style={{ position: "relative" }}>
+                  <TouchableOpacity 
+                  onPress={() => navigation.navigate('ChatHistoryPage')}
+                  onMouseEnter={() => setHoveredHistory(true)}
+                  onMouseLeave={() => setHoveredHistory(false)}
+                  style={{
+                    padding: 8,
+                    borderRadius: 6,
+                    backgroundColor: hoveredHistory ? "rgba(255,255,255,0.15)" 
+                    : "transparent",}}>
+                      <FontAwesome name="android" size={20} color="white" />
+                  </TouchableOpacity>
+                  {hoveredHistory && (
+                    <View style={{
+                      position: "absolute",
+                      bottom: -30,
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      backgroundColor: "#2B5A3E",
+                      padding: "4px 8px",
+                      borderRadius: 4,
+                      zIndex: 1000,}}>
+                        <Text style={{ color: "white", fontSize: 12 }}>Chat History</Text>
+                    </View>)}
+                </View>
+
+                {/*<TouchableOpacity onPress={toggleTheme}>
                   <MaterialIcons name={isDarkMode ? "wb-sunny" : "nightlight-round"} size={20} color="white" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate("ProfilePage")}>
+                </TouchableOpacity>*/}
+
+                {/* Theme Toggle with Hover Effect */}
+                <View style={{ position: "relative" }}>
+                  <TouchableOpacity 
+                  onPress={toggleTheme}
+                  onMouseEnter={() => setHoveredTheme(true)}
+                  onMouseLeave={() => setHoveredTheme(false)}
+                  style={{
+                    padding: 8,
+                    borderRadius: 6,
+                    backgroundColor: hoveredTheme 
+                    ? (isDarkMode ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.2)") 
+                    : "transparent",}}>
+                      <MaterialIcons 
+                      name={isDarkMode ? "wb-sunny" : "nightlight-round"} 
+                      size={20} 
+                      color="white" />
+                  </TouchableOpacity>
+                  {hoveredTheme && (
+                    <View
+                    style={{
+                      position: "absolute",
+                      bottom: -30,
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      backgroundColor: "#2B5A3E",
+                      padding: "4px 8px",
+                      borderRadius: 4,
+                      zIndex: 1000,}}>
+                        <Text style={{ color: "white", fontSize: 12 }}>
+                          {isDarkMode ? "Light Mode" : "Dark Mode"}</Text>
+                    </View>)}
+                </View>
+
+                {/*<TouchableOpacity onPress={() => navigation.navigate("ProfilePage")}>
                   <FontAwesome name="user" size={20} color="white" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleLogout}>
+                </TouchableOpacity>*/}
+
+                {/* User Icon with Hover Effect */}
+                <View style={{ position: "relative" }}>
+                  <TouchableOpacity 
+                  onPress={() => navigation.navigate("ProfilePage")}
+                  onMouseEnter={() => setHoveredUser(true)}
+                  onMouseLeave={() => setHoveredUser(false)}
+                  style={{
+                    padding: 8,
+                    borderRadius: 6,
+                    backgroundColor: hoveredUser ? "rgba(255,255,255,0.15)" 
+                    : "transparent",}}>
+                      <FontAwesome name="user" size={20} color="white" />
+                  </TouchableOpacity>
+                  {hoveredUser && (
+                    <View style={{
+                      position: "absolute",
+                      bottom: -20,
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      backgroundColor: "#2B5A3E",
+                      padding: "4px 8px",
+                      borderRadius: 4,
+                      zIndex: 1000,}}>
+                        <Text style={{ color: "white", fontSize: 12 }}>Profile</Text>
+                    </View>)}
+                </View>
+
+                {/*<TouchableOpacity onPress={handleLogout}>
                   <FontAwesome name="sign-out" size={20} color="white" />
-                </TouchableOpacity>
+                </TouchableOpacity>*/}
+
+                {/* Sign-out Icon with Hover Effect */}
+                <View style={{ position: "relative" }}>
+                  <TouchableOpacity 
+                  onPress={handleLogout}
+                  onMouseEnter={() => setHoveredSignout(true)}
+                  onMouseLeave={() => setHoveredSignout(false)}
+                  style={{
+                    padding: 8,
+                    borderRadius: 6,
+                    backgroundColor: hoveredSignout ? "rgba(255,255,255,0.15)" 
+                    : "transparent",}}>
+                      <FontAwesome name="sign-out" size={20} color="white" />
+                  </TouchableOpacity>
+                  {hoveredSignout && (
+                    <View style={{
+                      position: "absolute",
+                      bottom: -30,
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      backgroundColor: "#2B5A3E",
+                      padding: "4px 8px",
+                      borderRadius: 4,
+                      zIndex: 1000,}}>
+                        <Text style={{ color: "white", fontSize: 12 }}>Sign Out</Text>
+                    </View>)}
+                </View>
               </View>
             </View>
 
@@ -1171,44 +1316,67 @@ const ExplorePage = () => {
               </View>
             ) : null}
 
-            <ScrollView
-              style={gridStyles.scrollContainer}
-              contentContainerStyle={gridStyles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              onScroll={({ nativeEvent }) => {
-                const { layoutMeasurement, contentOffset, contentSize } = nativeEvent
-                const paddingToBottom = 20
-                if (layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom) {
+            <InfiniteScroll
+              dataLength={papers.length}
+              next={async () => {
+                //console.log('InfiniteScroll next triggered, hasMore:', hasMore, 'current page (offset):', page);
+                if (!hasMore) {
+                  console.log('No more papers to load');
+                  return;
+                }
+                const PAPER_RANGE_OFFSET = 21;
+                const newOffset = page + PAPER_RANGE_OFFSET;
+                setPage(newOffset);
+                try {
+                  const response = await fetchExploreRecommendations(newOffset);
+                  setPapers(prev => [...prev, ...response.data]);
+                  if (response.data.length < PAPER_RANGE_OFFSET) {
+                    setHasMore(false);
+                  }
+                } catch (error) {
+                  console.error('Error fetching more papers:', error);
+                  setHasMore(false);
                 }
               }}
-              scrollEventThrottle={400}
+              hasMore={hasMore}
+              loader={<Text style={{ textAlign: 'center', padding: "2rem", color: "white", fontSize: "1.2rem" }}>Loading...</Text>}
+              endMessage={
+                <p style={{ textAlign: 'center' }}>
+                  <b><Text>You have reached the end</Text></b>
+                </p>
+              }
+              height="calc(100vh - 90px)"
+              style={{
+                paddingTop: 20,
+              }}
             >
-              <View style={gridStyles.papersContainer}>
-                {papers.map((item, index) => {
-                  console.log("Rendering paper:", item);
-                  return (
-                    <View key={item.paper_id} style={gridStyles.paperWrapper}>
-                      <PaperListItemWeb
-                        item={item}
-                        navigation={navigation}
-                        userId={profileData?.id}
-                        isDarkMode={isDarkMode}
-                        showAuthModal={() => alert("Please log in to use this feature.")}
-                        setFocusedPaper={setFocusedPaper} // So the summary modal works
-                        gridStyles={gridStyles}
-                      />
-                    </View>
-                  );
-                })}
+              <View style={gridStyles.scrollContent}>
+                <View style={gridStyles.papersContainer}>
+                  {papers.map((item, index) => {
+                    //console.log("Rendering paper:", item);        
+                    return (
+                      <View key={index} style={gridStyles.paperWrapper}>
+                        <PaperListItemWeb
+                          item={item}
+                          navigation={navigation}
+                          userId={profileData?.id}
+                          isDarkMode={isDarkMode}
+                          showAuthModal={() => alert("Please log in to use this feature.")}
+                          setFocusedPaper={setFocusedPaper}
+                          gridStyles={gridStyles}
+                        />
+                      </View>
+                    );
+                  })}
+                </View>
 
+                {papers.length === 0 && !loading && (
+                  <Text style={{ textAlign: "center", padding: "2rem", color: "white", fontSize: "1.2rem" }}>
+                    No papers found
+                  </Text>
+                )}
               </View>
-
-              {papers.length === 0 && !loading && (
-                <Text style={{ textAlign: "center", padding: "2rem", color: "white", fontSize: "1.2rem" }}>
-                  No papers found
-                </Text>
-              )}
-            </ScrollView>
+            </InfiniteScroll>
           </View>
         </LinearGradient>
       </View>

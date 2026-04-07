@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     View, TextInput, TouchableOpacity, Text, ScrollView,
     Alert, Image
@@ -20,11 +20,13 @@ export default function EditProfilePage() {
     const [email, setEmail] = useState('');
     const [bio, setBio] = useState('');
     const [profileImage, setProfileImage] = useState(null);
+
     useEffect(() => {
         setTimeout(async () => {
             const isLoggedIn = await checkIfLoggedIn();
         }, 100);
     }, [])
+    
     const handleUpdate = async () => {
         try {
             const profileData = { username, name, email, bio };
@@ -32,12 +34,9 @@ export default function EditProfilePage() {
 
             Alert.alert('Success', 'Profile updated successfully');
 
-
             if (onUpdate) {
                 onUpdate(profileData);
             }
-
-
             navigation.goBack();
         } catch (error) {
             console.error('Error updating profile:', error);

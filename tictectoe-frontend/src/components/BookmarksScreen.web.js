@@ -1,14 +1,14 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { View, ScrollView, Text, StyleSheet, TouchableOpacity, Switch } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { PaperListItem } from "../components/small-components/PaperListItem";
 import { fetchBookmarks } from "../../api";
-import { color } from "react-native-elements/dist/helpers";
 import { checkIfLoggedIn } from "./functions/checkIfLoggedIn";
 import { checkIfGobackInfoAvailable } from "./functions/routeGoBackHandler";
 import { Ionicons } from "@expo/vector-icons";
 import tw from "twrnc";
 import { MaterialIcons } from "@expo/vector-icons";
+import { FontAwesome } from "@expo/vector-icons";
+import { unbookmarkPaper } from "./functions/PaperFunc";
 
 export default function BookmarksScreen({ navigation }) {
   const [bookmarks, setBookmarks] = useState([]);
@@ -20,20 +20,36 @@ export default function BookmarksScreen({ navigation }) {
       const isLoggedIn = await checkIfLoggedIn();
     }, 100);
   }, [])
-  useEffect(() => {
-    const loadBookmarks = async () => {
-      try {
-        const data = await fetchBookmarks();
-        setBookmarks(data);
-      } catch (error) {
-        console.error("Error loading bookmarks:", error.message);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const loadBookmarks = async () => {
+    try {
+      const data = await fetchBookmarks();
+      setBookmarks(data);
+    } catch (error) {
+      console.error("Error loading bookmarks:", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     loadBookmarks();
   }, []);
+
+  const handleRemoveBookmark = async (paperId) => {
+    try {
+      const success = await unbookmarkPaper(paperId);
+      if (success) {
+        // Reload bookmarks after successful removal
+        await loadBookmarks();
+      } else {
+        console.error("Failed to remove bookmark - API returned false");
+        alert("Failed to remove bookmark. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error removing bookmark:", error);
+      alert(`Error removing bookmark: ${error.message || "Please try again."}`);
+    }
+  };
 
   if (loading) {
     return (
@@ -80,25 +96,34 @@ export default function BookmarksScreen({ navigation }) {
           <View style={styles.bookmarksContainer}>
             {bookmarks.map((bookmark) => (
               <View key={bookmark.paper_id} style={styles.bookmarkWrapper}>
-                <TouchableOpacity
-                  onPress={() =>
-                    navigation.navigate("PaperNavigationPage", {
-                      title: bookmark.title,
-                      author: bookmark.author_names,
-                      paper_id: bookmark.paper_id,
-                      summary: bookmark.summary,
-                      doi: bookmark.doi,
-                      published_date: bookmark.published_date,
-                    })
-                  }
-                  style={[styles.card, isDarkMode && styles.darkCard]}
-                >
-                  <Text style={[styles.title, isDarkMode && styles.darkText]} numberOfLines={2}>{bookmark.title}</Text>
-                  <Text style={[styles.author, isDarkMode && styles.darkText]} numberOfLines={1}>{bookmark.author_names}</Text>
-                  <Text style={[styles.date, isDarkMode && styles.darkText]}>
-                    {new Date(bookmark.published_date).toLocaleDateString()}
-                  </Text>
-                </TouchableOpacity>
+                <View style={[styles.card, isDarkMode && styles.darkCard]}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      navigation.navigate("PaperNavigationPage", {
+                        title: bookmark.title,
+                        author: bookmark.author_names,
+                        paper_id: bookmark.paper_id,
+                        summary: bookmark.summary,
+                        doi: bookmark.doi,
+                        published_date: bookmark.published_date,
+                      })
+                    }
+                    style={styles.cardContent}
+                  >
+                    <Text style={[styles.title, isDarkMode && styles.darkText]} numberOfLines={2}>{bookmark.title}</Text>
+                    <Text style={[styles.author, isDarkMode && styles.darkText]} numberOfLines={1}>{bookmark.author_names}</Text>
+                    <Text style={[styles.date, isDarkMode && styles.darkText]}>
+                      {new Date(bookmark.published_date).toLocaleDateString()}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleRemoveBookmark(bookmark.paper_id)}
+                    style={[styles.removeButton, isDarkMode && styles.darkRemoveButton]}
+                  >
+                    <FontAwesome name="bookmark" size={18} color={isDarkMode ? "#4fc3f7" : "#2196F3"} />
+                    <Text style={[styles.removeButtonText, isDarkMode && styles.darkRemoveButtonText]}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ))}
           </View>
@@ -138,19 +163,6 @@ const styles = StyleSheet.create({
     top: 30,
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  button: {
-    backgroundColor: "#27ae60",
-    marginLeft: 20,
-    borderRadius: 8,
-    paddingVertical: 13,
-    paddingHorizontal: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
   scrollContent: {
     paddingHorizontal: 10,
@@ -199,6 +211,36 @@ const styles = StyleSheet.create({
     elevation: 2,
     minHeight: 120,
     justifyContent: "space-between",
+    display: "flex",
+    flexDirection: "column",
+  },
+  cardContent: {
+    flex: 1,
+  },
+  removeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    backgroundColor: "rgba(33, 150, 243, 0.1)",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(33, 150, 243, 0.3)",
+    gap: 6,
+  },
+  removeButtonText: {
+    color: "#2196F3",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  darkRemoveButton: {
+    backgroundColor: "rgba(79, 195, 247, 0.15)",
+    borderColor: "rgba(79, 195, 247, 0.4)",
+  },
+  darkRemoveButtonText: {
+    color: "#4fc3f7",
   },
   darkCard: {
     backgroundColor: "rgba(30,30,30,0.85)",

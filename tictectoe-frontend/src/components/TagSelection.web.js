@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Switch, Image, Alert, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient'; // For gradient background
-import { CheckBox } from 'react-native-elements'; // Import the CheckBox component
+import { View, Text, TouchableOpacity, ScrollView, Switch, Image, Alert} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { CheckBox } from 'react-native-elements';
 import { useNavigation } from '@react-navigation/native';
-import tw from 'twrnc'; // Tailwind CSS for React Native
-import { updateUserInterests } from '../../api'; // Import functions from api.js
+import tw from 'twrnc';
+import { updateUserInterests } from '../../api';
 import { styles } from '../styles/TagSelectionStyles';
 import { checkIfLoggedIn } from './functions/checkIfLoggedIn';
 
