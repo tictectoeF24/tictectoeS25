@@ -4,7 +4,7 @@
   "description": "",
   "main": "app.js",
   "scripts": {
-    "dev": "nodemon app.js",
+    "start": "node app.js",
     "test": "jest --silent --forceExit",
     "build": "npm run lint && echo \"Build successful\"",
     "lint": "eslint . --ext .js"
