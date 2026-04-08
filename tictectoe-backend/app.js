@@ -1,10 +1,8 @@
 require("dotenv").config();
-console.log("Loaded GEMINI_API_KEY:", process.env.GEMINI_API_KEY);
 
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
-require("dotenv").config();
 
 const authRoutes = require("./routes/authRoutes");
 const profileRoutes = require("./routes/profileRoutes");
@@ -31,6 +29,7 @@ app.use("/api/conversations", conversationRoutes);
 app.use("/api/notes", noteRoutes);
 
 // Separate ORCID Authentication Route (Without Authentication)
+app.options("/api/profile/auth/orcid/callback", cors());
 app.use(
   "/api/profile/auth/orcid/callback",
   require("./controllers/profileController").handleOrcidCallback
